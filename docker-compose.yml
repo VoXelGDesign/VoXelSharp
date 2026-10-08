@@ -1,0 +1,35 @@
+services:
+  mc-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: csharp_minecraft_server
+    ports:
+      - "25565:25565"
+    volumes:
+      # Host dirs must be writable by UID 1654 (the chiseled `app` user):
+      #   mkdir -p data/world data/plugins && sudo chown -R 1654:1654 data
+      - ./data/world:/app/data/world
+      - ./data/plugins:/app/data/plugins:ro
+    # Time for the app to disconnect clients and flush the world after SIGTERM (default is only 10s).
+    stop_grace_period: 30s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    # No healthcheck on purpose: chiseled images have no shell/curl.
+    # If you want one, expose a TCP/HTTP health endpoint from the app and probe from outside the container.

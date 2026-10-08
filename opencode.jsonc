@@ -1,0 +1,121 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // ============================================================
+  // GLOBAL DEFAULTS
+  // ============================================================
+
+  // Normal implementation work uses the cheaper/faster model.
+  "model": "openrouter/deepseek/deepseek-v4-flash",
+
+  // Small/background tasks should stay cheap.
+  "small_model": "openrouter/deepseek/deepseek-v4-flash",
+
+  // Normal usage after the audit should use the Build agent.
+  "default_agent": "build",
+
+  // ============================================================
+  // OPENROUTER MODELS
+  // ============================================================
+
+  "provider": {
+    "openrouter": {
+      "models": {
+        "deepseek/deepseek-v4-flash": {
+          "name": "DeepSeek V4 Flash"
+        },
+
+        "deepseek/deepseek-v4-pro-0813": {
+          "name": "DeepSeek V4 Pro 0813 - Planning"
+        }
+      }
+    }
+  },
+
+  // ============================================================
+  // AGENTS
+  // ============================================================
+
+  "agent": {
+    "build": {
+      "steps": 30
+    },
+
+    "plan": {
+      "steps": 40,
+      "model": "openrouter/deepseek/deepseek-v4-pro-0813",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask",
+        "webfetch": "allow"
+      }
+    }
+  },
+
+  // ============================================================
+  // GLOBAL PERMISSIONS
+  // ============================================================
+
+  "permission": {
+    "edit": "allow",
+    "webfetch": "ask",
+    "external_directory": "deny",
+
+    "bash": {
+      "*": "ask",
+
+      // Safe .NET development commands.
+      "dotnet build*": "allow",
+      "dotnet test*": "allow",
+      "dotnet restore*": "allow",
+      "dotnet format*": "allow",
+
+      // Read-only Git commands.
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+
+      // Adding files is allowed; commits require confirmation.
+      "git add*": "allow",
+      "git commit*": "ask",
+
+      // Never allow remote or destructive Git operations.
+      "git push*": "deny",
+      "git reset --hard*": "deny",
+      "git clean*": "deny",
+
+      // Destructive filesystem operations.
+      "rm -rf*": "deny",
+
+      // Docker commands require confirmation.
+      "docker *": "ask",
+      "docker compose down -v*": "deny"
+    }
+  },
+
+  // ============================================================
+  // FILE WATCHER
+  // ============================================================
+
+  "watcher": {
+    "ignore": [
+      "**/bin/**",
+      "**/obj/**",
+      ".vs/**",
+      "data/**",
+      "vanilla/**",
+      "*.mca",
+      "*.dll",
+      "*.jar"
+    ]
+  },
+
+  // ============================================================
+  // CONTEXT MANAGEMENT
+  // ============================================================
+
+  "compaction": {
+    "auto": true,
+    "prune": true
+  }
+}

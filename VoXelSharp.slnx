@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/VoXelSharp.PluginApi/VoXelSharp.PluginApi.csproj" />
+    <Project Path="src/VoXelSharp.Protocol/VoXelSharp.Protocol.csproj" />
+    <Project Path="src/VoXelSharp.Server/VoXelSharp.Server.csproj" />
+    <Project Path="src/VoXelSharp.World/VoXelSharp.World.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VoXelSharp.Tests/VoXelSharp.Tests.csproj" />
+  </Folder>
+</Solution>
