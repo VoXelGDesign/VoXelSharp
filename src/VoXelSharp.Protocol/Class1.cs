@@ -1,4 +1,4 @@
-﻿namespace VoXelSharp.Protocol;
+namespace VoXelSharp.Protocol;
 
 public class Class1
 {

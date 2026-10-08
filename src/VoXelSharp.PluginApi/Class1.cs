@@ -1,4 +1,4 @@
-﻿namespace VoXelSharp.PluginApi;
+namespace VoXelSharp.PluginApi;
 
 public class Class1
 {

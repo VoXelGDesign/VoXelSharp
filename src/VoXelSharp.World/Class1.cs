@@ -1,4 +1,4 @@
-﻿namespace VoXelSharp.World;
+namespace VoXelSharp.World;
 
 public class Class1
 {
