@@ -71,11 +71,14 @@ There must not be one global packet ID namespace.
 
 # Packet Data
 
-Packet mappings will be populated after the official Minecraft 26.3 data has been generated.
+Packet mappings are generated from the Minecraft Wiki "Java Edition protocol"
+documentation into:
 
-Until then:
+docs/data/packets.json
 
-Packet IDs: UNVERIFIED Packet fields: UNVERIFIED Registry IDs: UNVERIFIED Block state IDs: UNVERIFIED Chunk wire format: UNVERIFIED
+Status by area:
+
+Packet IDs (handshaking, status): VERIFIED Packet fields (handshaking, status): VERIFIED Packet IDs and fields (login, configuration, play): BLOCKED Registry IDs: BLOCKED Block state IDs: BLOCKED Chunk wire format: BLOCKED
 
 
 Do not implement packet codecs using guessed IDs.
@@ -93,29 +96,60 @@ Expected destinations:
 Status Login
 
 
-Exact packet ID and fields must be populated from:
+## Handshake (serverbound, ID 0, official name "intention")
 
-docs/data/packets.json
+Source: handshaking/serverbound/0 in docs/data/packets.json.
 
+Fields, in order:
+
+Protocol Version: VarInt
+
+Server Address: String (255)
+
+Server Port: Unsigned Short
+
+Intent: VarInt Enum (1 = Status, 2 = Login, 3 = Transfer)
+
+
+Intents 2 and 3 both transition to the Login state.
 
 ---
 
 # Status
 
-The Status flow is:
+The status flow is:
 
 Client ↓ Status Request ↓ Server ↓ Status Response
 
 
 The ping flow is:
 
-Client ↓ Ping ↓ Server ↓ Pong
+Client ↓ Ping Request ↓ Server ↓ Pong Response
 
 
-Exact packet IDs and fields are currently:
+All packets below are sourced from docs/data/packets.json (status/*).
 
-UNVERIFIED
+## Status Request (serverbound, ID 0, official name "status_request")
 
+No fields.
+
+## Status Response (clientbound, ID 0, official name "status_response")
+
+JSON Response: String (32767)
+
+The response is the server-list JSON; see Java Edition protocol/Server List Ping.
+
+## Ping Request (serverbound, ID 1, official name "ping_request")
+
+Timestamp: Long
+
+May be any number; vanilla clients send the departure time in milliseconds.
+
+## Pong Response (clientbound, ID 1, official name "pong_response")
+
+Timestamp: Long
+
+Should match the timestamp sent by the client.
 
 ---
 
@@ -357,7 +391,8 @@ Only the data required for protocol implementation should be committed.
 
 Current protocol readiness:
 
-Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs: BLOCKED Packet fields: BLOCKED Registry data: BLOCKED Block state data: BLOCKED Chunk format: BLOCKED
+Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs (handshaking, status): VERIFIED Packet fields (handshaking, status): VERIFIED Packet IDs and fields (login, configuration, play): BLOCKED Registry data: BLOCKED Block state data: BLOCKED Chunk format: BLOCKED
 
 
-Once `docs/data/` is populated, this document should be expanded with the verified packet mappings.
+Packet codecs for the Handshaking and Status states are implemented and tested;
+see the Handshaking and Status sections above for the verified packet mappings.
