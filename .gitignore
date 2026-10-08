@@ -1,0 +1,63 @@
+# --- .NET build output ---
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+publish/
+*.nupkg
+*.snupkg
+
+# --- IDEs ---
+.vs/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.user
+*.suo
+*.DotSettings.user
+
+# --- Test / coverage ---
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.cobertura.xml
+
+# --- Server runtime data (never commit worlds, plugins, player data) ---
+data/
+*.mca
+*.mcr
+world/
+logs/
+crash-reports/
+
+# --- Vanilla reference material (copyrighted jar + raw generator output) ---
+vanilla/
+*.jar
+# Curated, trimmed reference extracts live in docs/data/ and ARE committed.
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+auth.json
+
+# --- OpenCode ---
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
+.opencode/bun.lock
+opencode.local.json
+opencode.local.jsonc
+
+# --- Git worktrees used for parallel agent runs ---
+.worktrees/
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db

@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/.vs/
+.git/
+.gitignore
+.opencode/
+.worktrees/
+data/
+vanilla/
+docs/
+tests/
+*.md
+Dockerfile
+docker-compose.yml
+.env
+.env.*
