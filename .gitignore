@@ -26,7 +26,7 @@ coverage/
 *.cobertura.xml
 
 # --- Server runtime data (never commit worlds, plugins, player data) ---
-data/
+/data/
 *.mca
 *.mcr
 world/
@@ -37,6 +37,8 @@ crash-reports/
 vanilla/
 *.jar
 # Curated, trimmed reference extracts live in docs/data/ and ARE committed.
+# Large raw wiki pages fetched locally to regenerate docs/data live in docs/data/_raw/ and are never committed.
+docs/data/_raw/
 
 # --- Secrets ---
 .env
