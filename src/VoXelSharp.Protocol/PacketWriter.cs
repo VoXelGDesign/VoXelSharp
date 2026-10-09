@@ -179,6 +179,30 @@ public sealed class PacketWriter
     }
 
     /// <summary>
+    /// Writes a BitSet: VarInt length in longs, then the longs (docs/data/wire_types.md).
+    /// Bit <c>i</c> is set when <c>(data[i / 64] &amp; (1 &lt;&lt; (i % 64))) != 0</c>.
+    /// </summary>
+    public void WriteBitSet(long[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        WriteVarInt(data.Length);
+        foreach (long value in data)
+        {
+            WriteLong(value);
+        }
+    }
+
+    /// <summary>
+    /// Writes a length-prefixed (Prefixed Array) byte array: VarInt length then the bytes.
+    /// </summary>
+    public void WritePrefixedByteArray(byte[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        WriteVarInt(data.Length);
+        WriteBytes(data);
+    }
+
+    /// <summary>
     /// Writes an IEEE-754 single-precision big-endian float.
     /// </summary>
     public void WriteFloat(float value)

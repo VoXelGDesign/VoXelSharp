@@ -108,3 +108,16 @@ Flags for Synchronize Player Position and related packets; Int bit mask:
 | 0x100 | Rotate velocity according to the change in rotation |
 
 Source: Java Edition protocol/Data types (wiki, 2026-10-09).
+
+## BitSet
+
+A bit set prefixed by its length in longs.
+
+- Length: VarInt — number of longs in the following array. May be 0 (no bits set).
+- Data: Array of Long.
+- The `i`th bit (0-based) is set when `(Data[i / 64] & (1 << (i % 64))) != 0`.
+
+Distinct from `Fixed BitSet (n)` (an `n`-bit set encoded as `ceil(n / 8)` bytes; not
+length-prefixed). Used by Light Data masks and elsewhere.
+
+Source: Java Edition protocol/Data types (wiki, 2026-10-09).

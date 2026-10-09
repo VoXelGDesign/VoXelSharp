@@ -45,6 +45,7 @@ public sealed class PacketRegistry
         registry.Register(PlayKeepAliveCodec.Instance);
         registry.Register(ServerPlayKeepAliveCodec.Instance);
         registry.Register(LoginPlayCodec.Instance);
+        registry.Register(ChunkDataCodec.Instance);
         return registry;
     }
 

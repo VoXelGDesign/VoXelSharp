@@ -241,6 +241,48 @@ public ref struct PacketReader
     }
 
     /// <summary>
+    /// Reads a BitSet: VarInt length in longs, then the longs (docs/data/wire_types.md).
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when the payload is malformed or truncated.</exception>
+    public long[] ReadBitSet()
+    {
+        int longCount = ReadVarInt();
+        if (longCount < 0)
+        {
+            throw new InvalidDataException($"Negative BitSet length ({longCount}).");
+        }
+
+        if ((long)longCount * 8 > Remaining)
+        {
+            throw new InvalidDataException(
+                $"BitSet of {longCount} longs is truncated; only {Remaining} bytes remain in the payload.");
+        }
+
+        var data = new long[longCount];
+        for (int i = 0; i < longCount; i++)
+        {
+            data[i] = ReadLong();
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// Reads a length-prefixed (Prefixed Array) byte array: VarInt length then the bytes.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when the payload is malformed or truncated.</exception>
+    public byte[] ReadPrefixedByteArray()
+    {
+        int count = ReadVarInt();
+        if (count < 0)
+        {
+            throw new InvalidDataException($"Negative prefixed byte-array length ({count}).");
+        }
+
+        return ReadBytes(count);
+    }
+
+    /// <summary>
     /// Reads a block position packed as a big-endian 64-bit integer.
     /// </summary>
     /// <exception cref="InvalidDataException">Thrown when fewer than 8 bytes remain.</exception>
