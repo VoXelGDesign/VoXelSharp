@@ -97,6 +97,37 @@ public sealed class PacketWriter
     }
 
     /// <summary>
+    /// Writes a single byte.
+    /// </summary>
+    public void WriteByte(byte value)
+    {
+        EnsureCapacity(1);
+        _buffer[_position] = value;
+        _position += 1;
+    }
+
+    /// <summary>
+    /// Writes an exact sequence of bytes.
+    /// </summary>
+    public void WriteBytes(ReadOnlySpan<byte> data)
+    {
+        int count = data.Length;
+        EnsureCapacity(count);
+        data.CopyTo(_buffer.AsSpan(_position));
+        _position += count;
+    }
+
+    /// <summary>
+    /// Writes a 1-byte Boolean: 0x01 for true, 0x00 for false.
+    /// </summary>
+    public void WriteBoolean(bool value)
+    {
+        EnsureCapacity(1);
+        _buffer[_position] = (byte)(value ? 0x01 : 0x00);
+        _position += 1;
+    }
+
+    /// <summary>
     /// Writes a signed 64-bit big-endian integer.
     /// </summary>
     public void WriteLong(long value)

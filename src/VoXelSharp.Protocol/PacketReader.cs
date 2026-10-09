@@ -170,6 +170,33 @@ public ref struct PacketReader
     }
 
     /// <summary>
+    /// Reads a 1-byte Boolean (0x01 = true, 0x00 = false).
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 1 byte remains, or the byte is not 0x00 or 0x01.</exception>
+    public bool ReadBoolean()
+    {
+        if (Remaining < 1)
+        {
+            throw new InvalidDataException("Truncated boolean in packet payload.");
+        }
+
+        byte value = _data[_position];
+        _position += 1;
+
+        if (value == 0x01)
+        {
+            return true;
+        }
+
+        if (value == 0x00)
+        {
+            return false;
+        }
+
+        throw new InvalidDataException($"Invalid boolean value 0x{value:X} (expected 0x00 or 0x01).");
+    }
+
+    /// <summary>
     /// Reads a signed 64-bit big-endian integer.
     /// </summary>
     /// <exception cref="InvalidDataException">Thrown when fewer than 8 bytes remain.</exception>
