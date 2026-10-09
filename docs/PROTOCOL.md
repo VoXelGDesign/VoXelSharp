@@ -124,10 +124,12 @@ Client ↓ Status Request ↓ Server ↓ Status Response
 
 The ping flow is:
 
-Client ↓ Ping Request ↓ Server ↓ Pong Response
+Client ↓ Ping Request ↓ Server ↓ Pong Response ↓ Server closes the connection
 
 
-All packets below are sourced from docs/data/packets.json (status/*).
+All packets below are sourced from docs/data/packets.json (status/*) and the
+Minecraft Wiki "Java Edition protocol/Server List Ping" page (captured under
+docs/data/_raw/_server_list_ping.raw.wikitext.txt).
 
 ## Status Request (serverbound, ID 0, official name "status_request")
 
@@ -137,7 +139,53 @@ No fields.
 
 JSON Response: String (32767)
 
-The response is the server-list JSON; see Java Edition protocol/Server List Ping.
+The response is the server-list JSON. The client may skip the Status Request
+and send a Ping Request directly.
+
+Verified JSON schema (Server List Ping page):
+
+{
+  "version": {
+    "name": "26.3",
+    "protocol": 777
+  },
+  "players": {
+    "max": 20,
+    "online": 0,
+    "sample": [ { "name": "...", "id": "<UUID>" } ]
+  },
+  "description": {
+    "text": "Hello, world!"
+  },
+  "favicon": "data:image/png;base64,<data>",
+  "enforcesSecureChat": false
+}
+
+Field notes:
+
+version.name
+: mandatory; the server version string shown in the client
+
+version.protocol
+: the protocol version number
+
+players.max / players.online
+: player counts; values above 2^31-1 are not supported by the vanilla server
+
+players.sample
+: optional; omitted when there are no players
+
+description
+: optional; when present it is a text component (e.g. {"text": "..."})
+
+favicon
+: optional; Base64 PNG without newlines, prefixed with "data:image/png;base64,"
+
+enforcesSecureChat
+: optional bool
+
+The Notchian server delays the Status Response until the Ping Request arrives
+(30s timeout); this project responds to the Status Request immediately.
 
 ## Ping Request (serverbound, ID 1, official name "ping_request")
 
@@ -150,6 +198,8 @@ May be any number; vanilla clients send the departure time in milliseconds.
 Timestamp: Long
 
 Should match the timestamp sent by the client.
+
+After the Pong Response is sent, the server closes the connection.
 
 ---
 
