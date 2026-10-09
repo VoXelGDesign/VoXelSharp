@@ -214,12 +214,13 @@ Login Start Login Success Login Acknowledged
 
 Optional compression negotiation may occur during Login.
 
-Exact packet IDs and fields are:
+Exact packet IDs and fields are in:
 
-UNVERIFIED
+docs/data/packets.json
 
 
-Do not implement until verified against generated data.
+The offline-mode flow is Login Start directly followed by Login Success
+(see the 26.3 protocol page; encryption is skipped in offline mode).
 
 ---
 
@@ -233,15 +234,29 @@ The expected configuration process includes data required by the client before e
 
 Relevant concepts include:
 
-Known Packs Feature Flags Registry Data Finish Configuration Acknowledge Finish Configuration
+Known Packs Feature Flags Registry Data Update Tags Finish Configuration Acknowledge Finish Configuration
 
 
-Exact packet IDs, field ordering, registry payloads, and transition details are:
+Exact packet IDs, field ordering, registry payloads, and transition details are present in:
 
-UNVERIFIED
+docs/data/packets.json docs/data/wire_types.md docs/data/registries.json
 
 
-They must be obtained from the official 26.3 protocol data and reference documentation.
+Configuration flow (from the 26.3 protocol page and Registries page, 2026-10-09):
+
+- Login Acknowledged moves the connection from Login to Configuration.
+- The server sends Known Packs (clientbound). The vanilla server does not continue
+  until the client replies with Known Packs (serverbound).
+- The server then sends Registry Data (one packet per synchronized registry),
+  Update Tags, Feature Flags, and finally Finish Configuration.
+- The client answers with Acknowledge Finish Configuration, which switches the
+  connection state to Play.
+
+The implemented flow (ConnectionSession) advertises the pack minecraft:core at
+version 26.3, sends Registry Data with entry data omitted (Prefixed Optional NBT =
+false, sourced from known packs), sends the feature flag minecraft:vanilla, empty
+Update Tags, and Finish Configuration, then transitions to Play on Acknowledge
+Finish Configuration.
 
 ---
 
@@ -258,9 +273,15 @@ Initial targets include:
 Join Game Set Center Chunk Chunk Batch Start Chunk Data Chunk Batch Finished Player Position/Rotation Set Render Distance Keep Alive
 
 
-Exact packet IDs and field layouts are:
+Exact packet IDs and field layouts are present in:
 
-UNVERIFIED
+docs/data/packets.json
+
+
+Play remains PARTIAL as an implementation target: the packet table is verified, and block- and
+state IDs are now captured in docs/data/blocks.json (compiled from the official 26.3 server
+data generator). Still required before the M4 Play + Flat World milestone: the 26.3 chunk wire
+format and the registry NBT payloads for Login (play) (see the readiness footer).
 
 
 ---
@@ -441,8 +462,11 @@ Only the data required for protocol implementation should be committed.
 
 Current protocol readiness:
 
-Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs (handshaking, status): VERIFIED Packet fields (handshaking, status): VERIFIED Packet IDs and fields (login, configuration, play): BLOCKED Registry data: PRESENT (wiki-compiled, needs 26.3 data-generator verification) Block state data: BLOCKED Chunk format: BLOCKED
+Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs and fields (handshaking, status, login, configuration): PRESENT (docs/data/packets.json) Composite wire types (Identifier, Prefixed Array, Prefixed Optional, NBT, Tag): PRESENT (docs/data/wire_types.md, wiki-captured for 26.3/protocol 777) Play state: PARTIAL (packet table PRESENT via docs/data/packets.json and the Mojang data-generator report; chunk wire format and registry NBT still needed) Registry data: PRESENT (data-pack-compiled from the 26.3 server.jar) Block state data: PRESENT (docs/data/blocks.json, data-generator-compiled) Chunk format: BLOCKED (needs capture from the 26.3 protocol docs)
 
 
-Packet codecs for the Handshaking and Status states are implemented and tested;
-see the Handshaking and Status sections above for the verified packet mappings.
+Packet codecs for the Handshaking, Status, Login, and Configuration states are implemented
+and tested; NBT and composite wire types are captured in docs/data/wire_types.md. The
+Configuration flow (Known Packs negotiation, Registry Data, Update Tags, Feature Flags,
+Finish Configuration, Acknowledge Finish Configuration) is wired in the server session.
+See the relevant sections above for the verified mappings.
