@@ -79,3 +79,32 @@ Each **Tag** is:
 - `Entries`: Prefixed Array of:
   - `Entry ID`: Identifier (e.g. `minecraft:overworld`)
   - `Data`: Prefixed Optional NBT (Network NBT compound). If omitted, sourced from known packs.
+
+## Position
+
+An 8-byte integer packing `x`, `z`, `y`: x as a 26-bit signed integer, z as a 26-bit signed
+integer, y as a 12-bit signed integer (big-endian on the wire).
+
+- Valid ranges: x `-33,554,432 .. 33,554,431`; z `-33,554,432 .. 33,554,431`; y `-2048 .. 2047`.
+- Encoded `((x & 0x3FFFFFF) << 38) | ((z & 0x3FFFFFF) << 12) | (y & 0xFFF)`.
+- Decoded `x = val >> 38; z = val << 26 >> 38; y = val << 52 >> 52` (arithmetic shifts).
+
+Source: Java Edition protocol/Data types (wiki, 2026-10-09).
+
+## Teleport Flags
+
+Flags for Synchronize Player Position and related packets; Int bit mask:
+
+| Bit  | Meaning            |
+|------|--------------------|
+| 0x01 | Relative X         |
+| 0x02 | Relative Y         |
+| 0x04 | Relative Z         |
+| 0x08 | Relative Yaw       |
+| 0x10 | Relative Pitch     |
+| 0x20 | Relative Velocity X |
+| 0x40 | Relative Velocity Y |
+| 0x80 | Relative Velocity Z |
+| 0x100 | Rotate velocity according to the change in rotation |
+
+Source: Java Edition protocol/Data types (wiki, 2026-10-09).

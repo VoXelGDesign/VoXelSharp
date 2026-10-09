@@ -158,6 +158,27 @@ public sealed class PacketWriter
     }
 
     /// <summary>
+    /// Writes a block position as a packed 64-bit big-endian integer
+    /// (docs/data/wire_types.md: x 26 bits, z 26 bits, y 12 bits).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when any coordinate is outside the network Position ranges.
+    /// </exception>
+    public void WritePosition(BlockPosition position)
+    {
+        if (position.X < BlockPosition.MinHorizontalCoordinate || position.X > BlockPosition.MaxHorizontalCoordinate
+            || position.Z < BlockPosition.MinHorizontalCoordinate || position.Z > BlockPosition.MaxHorizontalCoordinate
+            || position.Y < BlockPosition.MinVerticalCoordinate || position.Y > BlockPosition.MaxVerticalCoordinate)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(position),
+                $"Position ({position.X}, {position.Y}, {position.Z}) is outside the network ranges.");
+        }
+
+        WriteLong(position.ToPacked());
+    }
+
+    /// <summary>
     /// Writes an IEEE-754 single-precision big-endian float.
     /// </summary>
     public void WriteFloat(float value)

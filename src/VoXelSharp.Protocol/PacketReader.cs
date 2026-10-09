@@ -241,6 +241,21 @@ public ref struct PacketReader
     }
 
     /// <summary>
+    /// Reads a block position packed as a big-endian 64-bit integer.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 8 bytes remain.</exception>
+    public BlockPosition ReadPosition()
+    {
+        if (Remaining < 8)
+        {
+            throw new InvalidDataException("Truncated position in packet payload.");
+        }
+
+        long packed = ReadLong();
+        return BlockPosition.FromPacked(packed);
+    }
+
+    /// <summary>
     /// Reads a signed 16-bit big-endian integer.
     /// </summary>
     /// <exception cref="InvalidDataException">Thrown when fewer than 2 bytes remain.</exception>

@@ -278,10 +278,11 @@ Exact packet IDs and field layouts are present in:
 docs/data/packets.json
 
 
-Play remains PARTIAL as an implementation target: the packet table is verified, and block- and
-state IDs are now captured in docs/data/blocks.json (compiled from the official 26.3 server
-data generator). Still required before the M4 Play + Flat World milestone: the 26.3 chunk wire
-format and the registry NBT payloads for Login (play) (see the readiness footer).
+Play is now fully documented: the packet table is verified, block- and state IDs are captured
+in docs/data/blocks.json (compiled from the official 26.3 server data generator), the chunk
+wire format is captured in docs/data/chunk_format.md (sections, paletted containers, data
+arrays, heightmaps, light data), and registry NBT payloads are available from the 26.3 data
+pack in the server.jar (see the readiness footer).
 
 
 ---
@@ -462,7 +463,7 @@ Only the data required for protocol implementation should be committed.
 
 Current protocol readiness:
 
-Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs and fields (handshaking, status, login, configuration): PRESENT (docs/data/packets.json) Composite wire types (Identifier, Prefixed Array, Prefixed Optional, NBT, Tag): PRESENT (docs/data/wire_types.md, wiki-captured for 26.3/protocol 777) Play state: PARTIAL (packet table PRESENT via docs/data/packets.json and the Mojang data-generator report; chunk wire format and registry NBT still needed) Registry data: PRESENT (data-pack-compiled from the 26.3 server.jar) Block state data: PRESENT (docs/data/blocks.json, data-generator-compiled) Chunk format: BLOCKED (needs capture from the 26.3 protocol docs)
+Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs and fields (handshaking, status, login, configuration): PRESENT (docs/data/packets.json) Composite wire types (Identifier, Prefixed Array, Prefixed Optional, NBT, Tag): PRESENT (docs/data/wire_types.md, wiki-captured for 26.3/protocol 777) Play state: PRESENT (packet table in docs/data/packets.json, block state IDs in docs/data/blocks.json, chunk wire format in docs/data/chunk_format.md) Registry data: PRESENT (data-pack-compiled from the 26.3 server.jar) Block state data: PRESENT (docs/data/blocks.json, data-generator-compiled) Chunk format: PRESENT (docs/data/chunk_format.md, wiki-captured for 26.3)
 
 
 Packet codecs for the Handshaking, Status, Login, and Configuration states are implemented

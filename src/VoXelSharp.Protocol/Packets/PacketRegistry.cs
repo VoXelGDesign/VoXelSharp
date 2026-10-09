@@ -38,6 +38,13 @@ public sealed class PacketRegistry
         registry.Register(FeatureFlagsCodec.Instance);
         registry.Register(FinishConfigurationCodec.Instance);
         registry.Register(AcknowledgeFinishConfigurationCodec.Instance);
+        registry.Register(SetCenterChunkCodec.Instance);
+        registry.Register(SetRenderDistanceCodec.Instance);
+        registry.Register(ChunkBatchStartCodec.Instance);
+        registry.Register(ChunkBatchFinishedCodec.Instance);
+        registry.Register(PlayKeepAliveCodec.Instance);
+        registry.Register(ServerPlayKeepAliveCodec.Instance);
+        registry.Register(LoginPlayCodec.Instance);
         return registry;
     }
 
