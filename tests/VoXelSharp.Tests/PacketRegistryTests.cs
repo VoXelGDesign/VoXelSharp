@@ -47,8 +47,9 @@ public class PacketRegistryTests
     {
         var registry = CreateDefaultRegistry();
 
-        // ID 0 exists in Handshaking/Serverbound and Status/Serverbound, but not in Play.
-        Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Play, PacketDirection.Serverbound, 0));
+        // ID 0 exists in Handshaking/Serverbound, Status/Serverbound and Play/Serverbound
+        // (Confirm Teleportation), but not in Play/Clientbound.
+        Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Play, PacketDirection.Clientbound, 0));
     }
 
     [Fact]
@@ -65,7 +66,9 @@ public class PacketRegistryTests
     {
         var registry = CreateDefaultRegistry();
 
-        Assert.False(registry.TryGet(ConnectionState.Play, PacketDirection.Serverbound, 0, out _));
+        // ID 0 in Play/Serverbound is registered (Confirm Teleportation); use an identity
+        // that has no codec anywhere: Play/Clientbound 0, Handshaking/Clientbound 0.
+        Assert.False(registry.TryGet(ConnectionState.Play, PacketDirection.Clientbound, 0, out _));
         Assert.False(registry.TryGet(ConnectionState.Handshaking, PacketDirection.Clientbound, 0, out _));
     }
 

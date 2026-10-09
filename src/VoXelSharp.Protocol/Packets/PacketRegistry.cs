@@ -50,6 +50,13 @@ public sealed class PacketRegistry
         registry.Register(SetDefaultSpawnPositionCodec.Instance);
         registry.Register(SetSimulationDistanceCodec.Instance);
         registry.Register(SetHeldItemCodec.Instance);
+        registry.Register(PlayClientInformationCodec.Instance);
+        registry.Register(ConfirmTeleportationCodec.Instance);
+        registry.Register(SetPlayerPositionAndRotationCodec.Instance);
+        registry.Register(ChunkBatchReceivedCodec.Instance);
+        registry.Register(PlayerLoadedCodec.Instance);
+        registry.Register(ClientTickEndCodec.Instance);
+        registry.Register(PlayPongCodec.Instance);
         return registry;
     }
 

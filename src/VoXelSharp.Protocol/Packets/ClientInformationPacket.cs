@@ -95,23 +95,10 @@ public sealed class ClientInformationPacket : IPacket
     public ClientParticleStatus ParticleStatus { get; }
 }
 
-/// <summary>Codec for <see cref="ClientInformationPacket"/>.</summary>
-public sealed class ClientInformationCodec : PacketCodec<ClientInformationPacket>
+/// <summary>Shared Client Information body encoding; identical in Configuration and Play.</summary>
+internal static class ClientInformationIO
 {
-    /// <summary>Singleton access.</summary>
-    public static ClientInformationCodec Instance { get; } = new();
-
-    /// <inheritdoc />
-    public override ConnectionState State => ConnectionState.Configuration;
-
-    /// <inheritdoc />
-    public override PacketDirection Direction => PacketDirection.Serverbound;
-
-    /// <inheritdoc />
-    public override int PacketId => 0;
-
-    /// <inheritdoc />
-    protected override void EncodeBody(ClientInformationPacket packet, PacketWriter writer)
+    public static void Encode(ClientInformationPacket packet, PacketWriter writer)
     {
         writer.WriteString(packet.Locale, ClientInformationPacket.MaxLocaleLength);
         writer.WriteByte((byte)packet.ViewDistance);
@@ -124,8 +111,7 @@ public sealed class ClientInformationCodec : PacketCodec<ClientInformationPacket
         writer.WriteVarInt((int)packet.ParticleStatus);
     }
 
-    /// <inheritdoc />
-    protected override ClientInformationPacket DecodeBody(ref PacketReader reader)
+    public static ClientInformationPacket Decode(ref PacketReader reader)
     {
         string locale = reader.ReadString(ClientInformationPacket.MaxLocaleLength);
         sbyte viewDistance = (sbyte)reader.ReadByte();
@@ -162,4 +148,58 @@ public sealed class ClientInformationCodec : PacketCodec<ClientInformationPacket
             locale, viewDistance, chatMode, chatColors, skinParts,
             mainHand, filter, listings, particleStatus);
     }
+}
+
+/// <summary>
+/// Codec for the Configuration serverbound Client Information packet (id 0).
+/// </summary>
+public sealed class ClientInformationCodec : PacketCodec<ClientInformationPacket>
+{
+    /// <summary>Singleton access.</summary>
+    public static ClientInformationCodec Instance { get; } = new();
+
+    /// <inheritdoc />
+    public override ConnectionState State => ConnectionState.Configuration;
+
+    /// <inheritdoc />
+    public override PacketDirection Direction => PacketDirection.Serverbound;
+
+    /// <inheritdoc />
+    public override int PacketId => 0;
+
+    /// <inheritdoc />
+    protected override void EncodeBody(ClientInformationPacket packet, PacketWriter writer)
+        => ClientInformationIO.Encode(packet, writer);
+
+    /// <inheritdoc />
+    protected override ClientInformationPacket DecodeBody(ref PacketReader reader)
+        => ClientInformationIO.Decode(ref reader);
+}
+
+/// <summary>
+/// Codec for the Play serverbound Client Information packet (id 14). The client resends its
+/// settings when they change; the wire body is identical to the Configuration variant.
+/// Verified as protocol_id 14 against the Mojang data-generator report.
+/// </summary>
+public sealed class PlayClientInformationCodec : PacketCodec<ClientInformationPacket>
+{
+    /// <summary>Singleton access.</summary>
+    public static PlayClientInformationCodec Instance { get; } = new();
+
+    /// <inheritdoc />
+    public override ConnectionState State => ConnectionState.Play;
+
+    /// <inheritdoc />
+    public override PacketDirection Direction => PacketDirection.Serverbound;
+
+    /// <inheritdoc />
+    public override int PacketId => 14;
+
+    /// <inheritdoc />
+    protected override void EncodeBody(ClientInformationPacket packet, PacketWriter writer)
+        => ClientInformationIO.Encode(packet, writer);
+
+    /// <inheritdoc />
+    protected override ClientInformationPacket DecodeBody(ref PacketReader reader)
+        => ClientInformationIO.Decode(ref reader);
 }
