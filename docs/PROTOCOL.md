@@ -441,7 +441,7 @@ Only the data required for protocol implementation should be committed.
 
 Current protocol readiness:
 
-Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs (handshaking, status): VERIFIED Packet fields (handshaking, status): VERIFIED Packet IDs and fields (login, configuration, play): BLOCKED Registry data: BLOCKED Block state data: BLOCKED Chunk format: BLOCKED
+Version: VERIFIED Protocol: VERIFIED Wire primitives: READY Packet IDs (handshaking, status): VERIFIED Packet fields (handshaking, status): VERIFIED Packet IDs and fields (login, configuration, play): BLOCKED Registry data: PRESENT (wiki-compiled, needs 26.3 data-generator verification) Block state data: BLOCKED Chunk format: BLOCKED
 
 
 Packet codecs for the Handshaking and Status states are implemented and tested;

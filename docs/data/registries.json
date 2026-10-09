@@ -1,0 +1,304 @@
+{
+  "_comment": "Registry metadata for Minecraft 26.3 / protocol 777. Compiled from Minecraft Wiki 'Java Edition protocol/Registries' (CC BY-SA 3.0), fetched Oct 2026. Raw wiki fetch blocked by Cloudflare; data was captured from the rendered page. Full entry NBT data requires extraction from vanilla 26.3 server.jar data pack; entry lists here are from wiki requirements. Licensing: CC BY-SA 3.0, reproduced per wiki reuse notice.",
+  "version": "26.3",
+  "protocol": 777,
+
+  "registries": [
+    {
+      "name": "minecraft:banner_pattern",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Due to default item component values, tags for these pattern items must be defined: bordure_indented, creeper, field_masoned, flow, flower, globe, guster, mojang, piglin, skull. NBT format: Banner pattern definition.",
+      "minimumEntries": 10,
+      "entries": [
+        "minecraft:bordure_indented",
+        "minecraft:creeper",
+        "minecraft:field_masoned",
+        "minecraft:flow",
+        "minecraft:flower",
+        "minecraft:globe",
+        "minecraft:guster",
+        "minecraft:mojang",
+        "minecraft:piglin",
+        "minecraft:skull"
+      ]
+    },
+    {
+      "name": "minecraft:chat_type",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. Chat types specifying how chat messages are formatted. Referenced in Disguised Chat Message and Player Chat Message packets.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:damage_type",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Required for Login (play) packet. 26 entries minimum. Damage types specifying audiovisual effects for damage events. Referenced in Damage Event packet.",
+      "minimumEntries": 26,
+      "entries": [
+        "minecraft:cactus",
+        "minecraft:campfire",
+        "minecraft:cramming",
+        "minecraft:dragon_breath",
+        "minecraft:drown",
+        "minecraft:dry_out",
+        "minecraft:ender_pearl",
+        "minecraft:fall",
+        "minecraft:fly_into_wall",
+        "minecraft:freeze",
+        "minecraft:generic",
+        "minecraft:generic_kill",
+        "minecraft:hot_floor",
+        "minecraft:in_fire",
+        "minecraft:in_wall",
+        "minecraft:lava",
+        "minecraft:lightning_bolt",
+        "minecraft:magic",
+        "minecraft:on_fire",
+        "minecraft:out_of_world",
+        "minecraft:outside_border",
+        "minecraft:spear",
+        "minecraft:stalagmite",
+        "minecraft:starve",
+        "minecraft:sweet_berry_bush",
+        "minecraft:wither"
+      ]
+    },
+    {
+      "name": "minecraft:dialog",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. Types of dialogs.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:dimension_type",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Required for Login (play) packet. At least one entry needed for Dimension Type field.",
+      "minimumEntries": 1,
+      "entries": [
+        "minecraft:overworld",
+        "minecraft:the_nether",
+        "minecraft:the_end"
+      ]
+    },
+    {
+      "name": "minecraft:enchantment",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. Types of enchantments.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:instrument",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Required: minecraft:ponder_goat_horn must be defined for Finish Configuration to succeed.",
+      "minimumEntries": 1,
+      "entries": [
+        "minecraft:ponder_goat_horn"
+      ]
+    },
+    {
+      "name": "minecraft:jukebox_song",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Due to default item component values, 22 jukebox songs must be defined for Finish Configuration.",
+      "minimumEntries": 22,
+      "entries": [
+        "minecraft:11",
+        "minecraft:13",
+        "minecraft:5",
+        "minecraft:blocks",
+        "minecraft:bounce",
+        "minecraft:cat",
+        "minecraft:chirp",
+        "minecraft:creator",
+        "minecraft:creator_music_box",
+        "minecraft:far",
+        "minecraft:lava_chicken",
+        "minecraft:mall",
+        "minecraft:mellohi",
+        "minecraft:otherside",
+        "minecraft:pigstep",
+        "minecraft:precipice",
+        "minecraft:relic",
+        "minecraft:stal",
+        "minecraft:strad",
+        "minecraft:tears",
+        "minecraft:wait",
+        "minecraft:ward"
+      ]
+    },
+    {
+      "name": "minecraft:painting_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:sulfur_cube_archetype",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:test_environment",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. GameTest environments.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:test_instance",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. GameTest instances.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:timeline",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. Timelines for world clocks.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:trim_material",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Due to default item component values, 11 trim materials must be defined for Finish Configuration.",
+      "minimumEntries": 11,
+      "entries": [
+        "minecraft:amethyst",
+        "minecraft:copper",
+        "minecraft:diamond",
+        "minecraft:emerald",
+        "minecraft:gold",
+        "minecraft:iron",
+        "minecraft:lapis",
+        "minecraft:netherite",
+        "minecraft:quartz",
+        "minecraft:redstone",
+        "minecraft:resin"
+      ]
+    },
+    {
+      "name": "minecraft:trim_pattern",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. Armor trim patterns.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:world_clock",
+      "category": "synchronized",
+      "required": false,
+      "requirements": "Optional. World clocks.",
+      "minimumEntries": 0
+    },
+    {
+      "name": "minecraft:worldgen/biome",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Required for Login (play) packet. minecraft:plains is used as default for unloaded chunks.",
+      "minimumEntries": 1,
+      "entries": [
+        "minecraft:plains"
+      ]
+    },
+    {
+      "name": "minecraft:cat_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:cat_sound_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:chicken_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Due to default item component values, 3 chicken variants must be defined for Finish Configuration.",
+      "minimumEntries": 3,
+      "entries": [
+        "minecraft:cold",
+        "minecraft:temperate",
+        "minecraft:warm"
+      ]
+    },
+    {
+      "name": "minecraft:chicken_sound_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:cow_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:cow_sound_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:frog_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:pig_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:pig_sound_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:wolf_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:wolf_sound_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    },
+    {
+      "name": "minecraft:zombie_nautilus_variant",
+      "category": "synchronized",
+      "required": true,
+      "requirements": "Non-empty.",
+      "minimumEntries": 1
+    }
+  ]
+}
