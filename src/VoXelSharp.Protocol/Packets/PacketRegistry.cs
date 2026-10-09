@@ -46,6 +46,10 @@ public sealed class PacketRegistry
         registry.Register(ServerPlayKeepAliveCodec.Instance);
         registry.Register(LoginPlayCodec.Instance);
         registry.Register(ChunkDataCodec.Instance);
+        registry.Register(SynchronizePlayerPositionCodec.Instance);
+        registry.Register(SetDefaultSpawnPositionCodec.Instance);
+        registry.Register(SetSimulationDistanceCodec.Instance);
+        registry.Register(SetHeldItemCodec.Instance);
         return registry;
     }
 
