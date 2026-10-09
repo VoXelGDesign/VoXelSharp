@@ -59,6 +59,7 @@ public sealed class ConnectionSession : IDisposable
     // Play session state, set once the session reaches Play.
     private GameProfile? _playerProfile;
     private int _nextTeleportId = 1;
+    private int _lastIssuedTeleportId;
     private int _nextKeepAliveId = 1;
     private CancellationTokenSource? _playCts;
     private Task? _keepAliveTask;
@@ -140,24 +141,46 @@ public sealed class ConnectionSession : IDisposable
         finally
         {
             _playCts?.Cancel();
-            if (_keepAliveTask is not null)
-            {
-                try
-                {
-                    await _keepAliveTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
-                }
-                catch (OperationCanceledException)
-                {
-                }
-                catch (TimeoutException)
-                {
-                }
-            }
-
+            await ObserveKeepAliveTaskAsync();
             _playCts?.Dispose();
             _writeLock.Dispose();
             await _transport.Output.CompleteAsync();
             _transport.Input.Complete();
+        }
+    }
+
+    /// <summary>
+    /// Waits for background-loop shutdown and observes any unhandled exception so it cannot
+    /// escape the session's finally block or become an unobserved task exception. The transport
+    /// is about to be completed, so teardown-time failures are expected and are logged, not thrown.
+    /// </summary>
+    private async Task ObserveKeepAliveTaskAsync()
+    {
+        if (_keepAliveTask is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _keepAliveTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: the token was cancelled to stop the loop.
+        }
+        catch (ObjectDisposedException exception)
+        {
+            _ioFailure(_logger, exception.Message, null);
+        }
+        catch (IOException exception)
+        {
+            _ioFailure(_logger, exception.Message, null);
+        }
+        catch (TimeoutException)
+        {
+            // The loop did not stop in time; the transport is completed anyway and the task
+            // is abandoned at session end (its exceptions are observed by the loop itself).
         }
     }
 
@@ -463,6 +486,7 @@ public sealed class ConnectionSession : IDisposable
             cancellationToken);
 
         int teleportId = _nextTeleportId++;
+        _lastIssuedTeleportId = teleportId;
         await SendAsync(
             SynchronizePlayerPositionCodec.Instance,
             new SynchronizePlayerPositionPacket(
@@ -485,12 +509,11 @@ public sealed class ConnectionSession : IDisposable
 
     private LoginPlayPacket BuildLoginPlay()
     {
-        const int maxPlayers = 20;
         return new LoginPlayPacket(
             _playData.PlayerEntityId,
             isHardcore: false,
             _playData.DimensionNames,
-            maxPlayers,
+            ServerPlayDataProvider.MaxPlayers,
             _playData.ViewDistance,
             _playData.SimulationDistance,
             reducedDebugInfo: false,
@@ -514,7 +537,14 @@ public sealed class ConnectionSession : IDisposable
 
     private async Task SendPlayerInfoAddAsync(CancellationToken cancellationToken)
     {
-        GameProfile profile = _playerProfile ?? new GameProfile(0, 0, "Player", []);
+        // The profile is always set during Login Start before the session can reach Play; a
+        // missing profile here means the session reached Play out of order.
+        if (_playerProfile is null)
+        {
+            throw new InvalidDataException("Cannot send Player Info Add without a player profile.");
+        }
+
+        GameProfile profile = _playerProfile;
         var entry = new PlayerInfoEntryData(
             profile.PlayerUuidMsb,
             profile.PlayerUuidLsb,
@@ -571,6 +601,16 @@ public sealed class ConnectionSession : IDisposable
         {
             // Session shutdown.
         }
+        catch (IOException exception)
+        {
+            // The peer closed while we were sending; the read loop will notice and tear down.
+            _ioFailure(_logger, exception.Message, null);
+        }
+        catch (ObjectDisposedException exception)
+        {
+            // The write lock was disposed during teardown while a send was in flight.
+            _ioFailure(_logger, exception.Message, null);
+        }
     }
 
     private bool HandleConfirmTeleportation(ConfirmTeleportationPacket confirm)
@@ -583,10 +623,10 @@ public sealed class ConnectionSession : IDisposable
             throw new InvalidDataException("Confirm Teleportation received before the session reached Play.");
         }
 
-        if (confirm.TeleportId < 1 || confirm.TeleportId > _nextTeleportId)
+        if (confirm.TeleportId != _lastIssuedTeleportId)
         {
             throw new InvalidDataException(
-                $"Confirm Teleportation ID {confirm.TeleportId} does not match any issued teleport.");
+                $"Confirm Teleportation ID {confirm.TeleportId} does not match the last issued teleport {_lastIssuedTeleportId}.");
         }
 
         return false;

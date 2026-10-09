@@ -330,9 +330,24 @@ public class ConnectionSessionTests
 
         await StartPlayAsync(harness, registry);
 
-        // The only issued teleport has ID 1; a Confirm Teleportation with an out-of-range ID
-        // is a protocol violation.
+        // The only issued teleport has ID 1; a Confirm Teleportation with any other ID
+        // (including 2, the next value the counter would produce) is a protocol violation.
         await harness.ClientSendAsync(ConfirmTeleportationCodec.Instance, new ConfirmTeleportationPacket(99, 0, 0, 0, 0f, 0f));
+
+        await harness.WaitForSessionAsync();
+    }
+
+    [Fact]
+    public async Task ConfirmTeleportWithNextUnissuedIdClosesConnection()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // ID 2 is the next value of the issue counter but was never sent, so it must not be
+        // accepted as a valid confirmation (regression: the old range check accepted it).
+        await harness.ClientSendAsync(ConfirmTeleportationCodec.Instance, new ConfirmTeleportationPacket(2, 0, 0, 0, 0f, 0f));
 
         await harness.WaitForSessionAsync();
     }
