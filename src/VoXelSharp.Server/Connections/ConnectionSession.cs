@@ -2,6 +2,7 @@ using System.Buffers;
 using System.IO.Pipelines;
 using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Packets;
+using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Status;
 
 namespace VoXelSharp.Server.Connections;
@@ -26,11 +27,29 @@ public sealed class ConnectionSession
     private static readonly Action<ILogger, HandshakeIntent, Exception?> _unsupportedFlow =
         LoggerMessage.Define<HandshakeIntent>(LogLevel.Information, new EventId(4, nameof(ConnectionSession)), "Client requested the {Intent} flow, which is not implemented yet; closing connection.");
 
+    /// <summary>The step of the Configuration flow this session has reached.</summary>
+    private enum ConfigurationStage
+    {
+        /// <summary>Not in the Configuration state yet.</summary>
+        None,
+
+        /// <summary>Sent Known Packs (clientbound); waiting for the client's Known Packs (serverbound) response.</summary>
+        AwaitingKnownPacks,
+
+        /// <summary>Sent Registry Data, Update Tags, Feature Flags, and Finish Configuration; waiting for the acknowledge.</summary>
+        AwaitingFinishAck,
+
+        /// <summary>Configuration finished; the session is in Play.</summary>
+        Play,
+    }
+
     private readonly IDuplexPipe _transport;
     private readonly PacketRegistry _registry;
     private readonly ConnectionStateMachine _state;
     private readonly IStatusJsonProvider _statusJson;
+    private readonly IConfigurationDataProvider _configurationData;
     private readonly ILogger _logger;
+    private ConfigurationStage _configurationStage = ConfigurationStage.None;
 
     // Frame accumulation buffer: incoming bytes are appended until a complete frame is available.
     private byte[] _buffer;
@@ -43,6 +62,7 @@ public sealed class ConnectionSession
     /// <param name="registry">The packet registry; must be fully registered before any decode.</param>
     /// <param name="state">Per-connection protocol state machine.</param>
     /// <param name="statusJson">Provides the status JSON used for Status Response packets.</param>
+    /// <param name="configurationData">Provides the data sent during the Configuration state.</param>
     /// <param name="logger">Logger for this session.</param>
     /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
     public ConnectionSession(
@@ -50,18 +70,21 @@ public sealed class ConnectionSession
         PacketRegistry registry,
         ConnectionStateMachine state,
         IStatusJsonProvider statusJson,
+        IConfigurationDataProvider configurationData,
         ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(statusJson);
+        ArgumentNullException.ThrowIfNull(configurationData);
         ArgumentNullException.ThrowIfNull(logger);
 
         _transport = transport;
         _registry = registry;
         _state = state;
         _statusJson = statusJson;
+        _configurationData = configurationData;
         _logger = logger;
         _buffer = new byte[1024];
     }
@@ -167,7 +190,19 @@ public sealed class ConnectionSession
                 return false;
 
             case LoginAcknowledgedPacket:
-                return HandleLoginAcknowledged();
+                await HandleLoginAcknowledgedAsync(cancellationToken);
+                return false;
+
+            case ClientInformationPacket:
+                // Accepted; the client's settings are not used by any session logic yet.
+                return false;
+
+            case KnownPacksPacket:
+                await SendConfigurationDataAsync(cancellationToken);
+                return false;
+
+            case AcknowledgeFinishConfigurationPacket:
+                return HandleAcknowledgeFinishConfiguration();
 
             default:
                 throw new InvalidDataException(
@@ -229,9 +264,11 @@ public sealed class ConnectionSession
 
     /// <summary>
     /// Handles Login Acknowledged, the client's confirmation after Login Success, by moving
-    /// the session to the Configuration state. Configuration packets are sent in a later milestone.
+    /// the session to the Configuration state and sending the Known Packs (clientbound)
+    /// packet that begins the known-packs negotiation. The session then waits for the
+    /// client's Known Packs (serverbound) response before sending the rest.
     /// </summary>
-    private bool HandleLoginAcknowledged()
+    private async Task HandleLoginAcknowledgedAsync(CancellationToken cancellationToken)
     {
         if (!_state.TryTransitionTo(ConnectionState.Configuration))
         {
@@ -239,6 +276,64 @@ public sealed class ConnectionSession
                 $"Login Acknowledged is not a valid transition from state {_state.State}.");
         }
 
+        _configurationStage = ConfigurationStage.AwaitingKnownPacks;
+
+        // Wiki "Known packs negotiation": the server first announces its data packs
+        // (minecraft:core is the only pack a vanilla client recognizes) and the vanilla
+        // server does not continue with Configuration until the client responds.
+        await SendAsync(
+            KnownPacksCodec.Instance,
+            _configurationData.KnownPacks,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the remainder of the mandatory Configuration sequence once the client has
+    /// responded with its serverbound Known Packs: Registry Data (one packet per registry),
+    /// Update Tags, Feature Flags, and then Finish Configuration. The wiki flow is
+    /// Registry Data -&gt; Update Tags -&gt; Finish Configuration; Feature Flags are sent
+    /// before Finish Configuration so the client enables features before leaving Configuration.
+    /// </summary>
+    private async Task SendConfigurationDataAsync(CancellationToken cancellationToken)
+    {
+        if (_configurationStage != ConfigurationStage.AwaitingKnownPacks)
+        {
+            throw new InvalidDataException(
+                $"Unexpected Known Packs (serverbound) in Configuration stage {_configurationStage}.");
+        }
+
+        foreach (RegistryDataPacket registry in _configurationData.RegistryData)
+        {
+            await SendAsync(RegistryDataCodec.Instance, registry, cancellationToken);
+        }
+
+        await SendAsync(UpdateTagsCodec.Instance, _configurationData.UpdateTags, cancellationToken);
+        await SendAsync(FeatureFlagsCodec.Instance, _configurationData.FeatureFlags, cancellationToken);
+        await SendAsync(FinishConfigurationCodec.Instance, new FinishConfigurationPacket(), cancellationToken);
+
+        _configurationStage = ConfigurationStage.AwaitingFinishAck;
+    }
+
+    /// <summary>
+    /// Handles Acknowledge Finish Configuration, the client's confirmation after receiving
+    /// Finish Configuration. The wiki states this packet "switches the connection state to
+    /// play", so the session transitions to Play and stays open.
+    /// </summary>
+    private bool HandleAcknowledgeFinishConfiguration()
+    {
+        if (_configurationStage != ConfigurationStage.AwaitingFinishAck)
+        {
+            throw new InvalidDataException(
+                $"Unexpected Acknowledge Finish Configuration in Configuration stage {_configurationStage}.");
+        }
+
+        if (!_state.TryTransitionTo(ConnectionState.Play))
+        {
+            throw new InvalidDataException(
+                $"Acknowledge Finish Configuration is not a valid transition from state {_state.State}.");
+        }
+
+        _configurationStage = ConfigurationStage.Play;
         return false;
     }
 

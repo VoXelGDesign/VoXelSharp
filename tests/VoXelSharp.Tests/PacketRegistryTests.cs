@@ -109,18 +109,5 @@ public class PacketRegistryTests
         Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Handshaking, PacketDirection.Serverbound, 0));
     }
 
-    private static PacketRegistry CreateDefaultRegistry()
-    {
-        var registry = new PacketRegistry();
-        registry.Register(HandshakeCodec.Instance);
-        registry.Register(StatusRequestCodec.Instance);
-        registry.Register(StatusResponseCodec.Instance);
-        registry.Register(PingRequestCodec.Instance);
-        registry.Register(PongResponseCodec.Instance);
-        registry.Register(LoginAcknowledgedCodec.Instance);
-        registry.Register(DisconnectLoginCodec.Instance);
-        registry.Register(LoginStartCodec.Instance);
-        registry.Register(LoginSuccessCodec.Instance);
-        return registry;
-    }
+    private static PacketRegistry CreateDefaultRegistry() => PacketRegistry.CreateDefault();
 }

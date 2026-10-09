@@ -225,4 +225,104 @@ public ref struct PacketReader
         _position += 8;
         return true;
     }
+
+    /// <summary>
+    /// Reads a single byte.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 1 byte remains.</exception>
+    public byte ReadByte()
+    {
+        if (Remaining < 1)
+        {
+            throw new InvalidDataException("Truncated byte in packet payload.");
+        }
+
+        return _data[_position++];
+    }
+
+    /// <summary>
+    /// Reads a signed 16-bit big-endian integer.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 2 bytes remain.</exception>
+    public short ReadShort()
+    {
+        if (Remaining < 2)
+        {
+            throw new InvalidDataException("Truncated short in packet payload.");
+        }
+
+        short value = BinaryPrimitives.ReadInt16BigEndian(_data.Slice(_position, 2));
+        _position += 2;
+        return value;
+    }
+
+    /// <summary>
+    /// Reads a signed 32-bit big-endian integer.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 4 bytes remain.</exception>
+    public int ReadInt()
+    {
+        if (Remaining < 4)
+        {
+            throw new InvalidDataException("Truncated int in packet payload.");
+        }
+
+        int value = BinaryPrimitives.ReadInt32BigEndian(_data.Slice(_position, 4));
+        _position += 4;
+        return value;
+    }
+
+    /// <summary>
+    /// Reads an IEEE-754 single-precision big-endian float.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 4 bytes remain.</exception>
+    public float ReadFloat()
+    {
+        if (Remaining < 4)
+        {
+            throw new InvalidDataException("Truncated float in packet payload.");
+        }
+
+        float value = BinaryPrimitives.ReadSingleBigEndian(_data.Slice(_position, 4));
+        _position += 4;
+        return value;
+    }
+
+    /// <summary>
+    /// Reads an IEEE-754 double-precision big-endian float.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than 8 bytes remain.</exception>
+    public double ReadDouble()
+    {
+        if (Remaining < 8)
+        {
+            throw new InvalidDataException("Truncated double in packet payload.");
+        }
+
+        double value = BinaryPrimitives.ReadDoubleBigEndian(_data.Slice(_position, 8));
+        _position += 8;
+        return value;
+    }
+
+    /// <summary>
+    /// Reads a byte array of the given exact length.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when fewer than <paramref name="count"/> bytes remain.</exception>
+    public byte[] ReadBytes(int count)
+    {
+        if (count < 0)
+        {
+            throw new InvalidDataException($"Negative byte count ({count}) in packet payload.");
+        }
+
+        if (count > Remaining)
+        {
+            throw new InvalidDataException(
+                $"Byte array of {count} bytes is truncated; only {Remaining} bytes remain in the payload.");
+        }
+
+        byte[] value = _data.Slice(_position, count).ToArray();
+        _position += count;
+        return value;
+    }
 }

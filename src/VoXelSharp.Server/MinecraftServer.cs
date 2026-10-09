@@ -3,6 +3,7 @@ using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Packets;
+using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Connections;
 using VoXelSharp.Server.Status;
 
@@ -43,6 +44,7 @@ public sealed class MinecraftServer : IAsyncDisposable
     private readonly int _port;
     private readonly PacketRegistry _registry;
     private readonly IStatusJsonProvider _statusJson;
+    private readonly IConfigurationDataProvider _configurationData;
     private readonly ILogger _logger;
     private Task? _acceptTask;
     private bool _started;
@@ -54,14 +56,17 @@ public sealed class MinecraftServer : IAsyncDisposable
     /// <param name="statusJson">Provider for the status response JSON.</param>
     /// <param name="logger">Server logger.</param>
     /// <param name="port">TCP port to bind (default 25565).</param>
+    /// <param name="configurationData">Provider for the data sent during Configuration (defaults to the 26.3 set).</param>
     public MinecraftServer(
         PacketRegistry registry,
         IStatusJsonProvider statusJson,
         ILogger logger,
-        int port = 25565)
+        int port = 25565,
+        IConfigurationDataProvider? configurationData = null)
     {
         _registry = registry;
         _statusJson = statusJson;
+        _configurationData = configurationData ?? new ServerConfigurationDataProvider();
         _logger = logger;
         _port = port;
         _listener = new TcpListener(new IPEndPoint(IPAddress.Any, port));
@@ -154,7 +159,7 @@ public sealed class MinecraftServer : IAsyncDisposable
                 await using NetworkStream stream = client.GetStream();
                 var pipe = new StreamDuplexPipe(stream);
                 var stateMachine = new ConnectionStateMachine();
-                var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _logger);
+                var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, _logger);
 
                 await session.RunAsync(_stoppingCts.Token);
             }

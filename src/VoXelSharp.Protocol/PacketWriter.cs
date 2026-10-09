@@ -137,6 +137,46 @@ public sealed class PacketWriter
         _position += 8;
     }
 
+    /// <summary>
+    /// Writes a signed 16-bit big-endian integer.
+    /// </summary>
+    public void WriteShort(short value)
+    {
+        EnsureCapacity(2);
+        BinaryPrimitives.WriteInt16BigEndian(_buffer.AsSpan(_position), value);
+        _position += 2;
+    }
+
+    /// <summary>
+    /// Writes a signed 32-bit big-endian integer.
+    /// </summary>
+    public void WriteInt(int value)
+    {
+        EnsureCapacity(4);
+        BinaryPrimitives.WriteInt32BigEndian(_buffer.AsSpan(_position), value);
+        _position += 4;
+    }
+
+    /// <summary>
+    /// Writes an IEEE-754 single-precision big-endian float.
+    /// </summary>
+    public void WriteFloat(float value)
+    {
+        EnsureCapacity(4);
+        BinaryPrimitives.WriteSingleBigEndian(_buffer.AsSpan(_position), value);
+        _position += 4;
+    }
+
+    /// <summary>
+    /// Writes an IEEE-754 double-precision big-endian float.
+    /// </summary>
+    public void WriteDouble(double value)
+    {
+        EnsureCapacity(8);
+        BinaryPrimitives.WriteDoubleBigEndian(_buffer.AsSpan(_position), value);
+        _position += 8;
+    }
+
     private void EnsureCapacity(int additionalBytes)
     {
         int required = _position + additionalBytes;

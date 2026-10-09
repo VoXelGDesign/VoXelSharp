@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using Microsoft.Extensions.Logging.Abstractions;
 using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Packets;
+using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Connections;
 using VoXelSharp.Server.Status;
 
@@ -65,12 +66,96 @@ public class ConnectionSessionTests
         Assert.Equal(uuidMsb, success.Profile.PlayerUuidMsb);
         Assert.Equal(uuidLsb, success.Profile.PlayerUuidLsb);
 
-        // Client confirms with Login Acknowledged; session stays open in Configuration.
+        // Client confirms with Login Acknowledged; the session moves to Configuration.
         await harness.ClientSendAsync(LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket());
 
-        // The session reached Configuration and remains open awaiting more input.
+        // The session advertises its known packs as the first Configuration step.
+        byte[] knownPacksPayload = await harness.ReadServerFrameAsync();
+        var knownPacks = Assert.IsType<KnownPacksPacket>(
+            PacketRegistry.CreateDefault().Decode(ConnectionState.Configuration, PacketDirection.Clientbound, knownPacksPayload));
+        Assert.Contains(knownPacks.Packs, p => p.Namespace == "minecraft" && p.ID == "core");
+
         await harness.AssertSessionOpenAsync();
-        await harness.AssertNoMoreFramesAsync();
+    }
+
+    [Fact]
+    public async Task FullConfigurationFlowReachesPlay()
+    {
+        await using var harness = new SessionHarness();
+
+        // Client: Handshake (Login) then Login Start.
+        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Login));
+        await harness.ClientSendAsync(LoginStartCodec.Instance, new LoginStartPacket("Player1", 1, 2));
+
+        // Server: Login Success.
+        await harness.ReadServerFrameAsync();
+
+        // Client: Login Acknowledged -> Configuration.
+        await harness.ClientSendAsync(LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket());
+
+        // Server: Known Packs (clientbound) - the first Configuration step.
+        byte[] knownPacksPayload = await harness.ReadServerFrameAsync();
+        var knownPacks = Assert.IsType<KnownPacksPacket>(
+            PacketRegistry.CreateDefault().Decode(ConnectionState.Configuration, PacketDirection.Clientbound, knownPacksPayload));
+        Assert.Single(knownPacks.Packs);
+        Assert.Equal("minecraft", knownPacks.Packs[0].Namespace);
+        Assert.Equal("core", knownPacks.Packs[0].ID);
+
+        // Client: Known Packs (serverbound) - echoes what it knows; an empty list is valid
+        // and forces the server to send all registry data (wiki "Known packs negotiation").
+        await harness.ClientSendAsync(ServerKnownPacksCodec.Instance, new KnownPacksPacket([]));
+
+        // Server: Registry Data for each synchronized registry.
+        var registry = PacketRegistry.CreateDefault();
+        var provider = new ServerConfigurationDataProvider();
+        for (int i = 0; i < provider.RegistryData.Count; i++)
+        {
+            byte[] registryPayload = await harness.ReadServerFrameAsync();
+            var registryData = Assert.IsType<RegistryDataPacket>(
+                registry.Decode(ConnectionState.Configuration, PacketDirection.Clientbound, registryPayload));
+            Assert.Equal(provider.RegistryData[i].RegistryId, registryData.RegistryId);
+        }
+
+        // Server: Update Tags.
+        byte[] updateTagsPayload = await harness.ReadServerFrameAsync();
+        Assert.IsType<UpdateTagsPacket>(
+            registry.Decode(ConnectionState.Configuration, PacketDirection.Clientbound, updateTagsPayload));
+
+        // Server: Feature Flags.
+        byte[] featureFlagsPayload = await harness.ReadServerFrameAsync();
+        var featureFlags = Assert.IsType<FeatureFlagsPacket>(
+            registry.Decode(ConnectionState.Configuration, PacketDirection.Clientbound, featureFlagsPayload));
+        Assert.Contains("minecraft:vanilla", featureFlags.Features);
+
+        // Server: Finish Configuration.
+        byte[] finishPayload = await harness.ReadServerFrameAsync();
+        Assert.IsType<FinishConfigurationPacket>(
+            registry.Decode(ConnectionState.Configuration, PacketDirection.Clientbound, finishPayload));
+
+        // Client: Acknowledge Finish Configuration -> Play.
+        await harness.ClientSendAsync(AcknowledgeFinishConfigurationCodec.Instance, new AcknowledgeFinishConfigurationPacket());
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task AcknowledgeBeforeKnownPacksExchangeClosesConnection()
+    {
+        await using var harness = new SessionHarness();
+
+        // Client: Handshake (Login) then Login Start, then Login Acknowledged.
+        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Login));
+        await harness.ClientSendAsync(LoginStartCodec.Instance, new LoginStartPacket("Player1", 1, 2));
+        await harness.ReadServerFrameAsync(); // Login Success
+        await harness.ClientSendAsync(LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket());
+        await harness.ReadServerFrameAsync(); // Known Packs (clientbound)
+
+        // The client acknowledges Finish Configuration before the known-packs exchange has
+        // completed (stage AwaitingKnownPacks), which is a protocol violation.
+        await harness.ClientSendAsync(AcknowledgeFinishConfigurationCodec.Instance, new AcknowledgeFinishConfigurationPacket());
+
+        await harness.WaitForSessionAsync();
     }
 
     [Fact]
@@ -147,17 +232,20 @@ public class ConnectionSessionTests
         private readonly Pipe _serverToClient = new();
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _sessionTask;
+        private readonly ConnectionStateMachine _stateMachine;
         private readonly byte[] _received = new byte[4096];
         private int _receivedCount;
 
         public SessionHarness()
         {
             var serverTransport = new DuplexPipe(_clientToServer.Reader, _serverToClient.Writer);
+            _stateMachine = new ConnectionStateMachine();
             var session = new ConnectionSession(
                 serverTransport,
                 PacketRegistry.CreateDefault(),
-                new ConnectionStateMachine(),
+                _stateMachine,
                 new ServerStatusJsonProvider(new ServerStatusData("A Minecraft Server", 20, 0)),
+                new ServerConfigurationDataProvider(),
                 NullLogger<ConnectionSession>.Instance);
             _sessionTask = session.RunAsync(_cts.Token);
         }
@@ -187,7 +275,25 @@ public class ConnectionSessionTests
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             while (true)
             {
-                ReadResult result = await _serverToClient.Reader.ReadAsync(timeout.Token);
+                // A single pipe read may deliver several server frames at once; drain any
+                // frames already buffered locally before waiting for more pipe data.
+                if (FrameCodec.TryReadFrame(_received.AsSpan(0, _receivedCount), out byte[] buffered, out int bufferedConsumed))
+                {
+                    Compact(bufferedConsumed);
+                    return buffered;
+                }
+
+                ReadResult result;
+                try
+                {
+                    result = await _serverToClient.Reader.ReadAsync(timeout.Token);
+                }
+                catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+                {
+                    throw new TimeoutException(
+                        $"No server frame arrived within the timeout. Session status: {_sessionTask.Status}, state: {_stateMachine.State}.");
+                }
+
                 Append(result.Buffer);
                 _serverToClient.Reader.AdvanceTo(result.Buffer.End);
 
@@ -205,6 +311,13 @@ public class ConnectionSessionTests
         }
 
         public Task WaitForSessionAsync() => _sessionTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        public async Task AssertStateAsync(ConnectionState expected)
+        {
+            // Give the session a moment to process the last frame before asserting.
+            await Task.Delay(50);
+            Assert.Equal(expected, _stateMachine.State);
+        }
 
         public async Task AssertSessionOpenAsync()
         {

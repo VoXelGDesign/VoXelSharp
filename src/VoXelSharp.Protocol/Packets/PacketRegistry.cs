@@ -13,8 +13,10 @@ public sealed class PacketRegistry
 
     /// <summary>
     /// Creates a registry with the currently implemented packets registered:
-    /// Handshaking (Handshake), Status (Request/Response, Ping/Pong), and
-    /// Login (Start, Success, Acknowledged, Disconnect).
+    /// Handshaking (Handshake), Status (Request/Response, Ping/Pong), Login
+    /// (Start, Success, Acknowledged, Disconnect), and Configuration
+    /// (Client Information, Known Packs both directions, Registry Data, Update Tags,
+    /// Feature Flags, Finish Configuration, Acknowledge Finish Configuration).
     /// </summary>
     public static PacketRegistry CreateDefault()
     {
@@ -28,6 +30,14 @@ public sealed class PacketRegistry
         registry.Register(DisconnectLoginCodec.Instance);
         registry.Register(LoginStartCodec.Instance);
         registry.Register(LoginSuccessCodec.Instance);
+        registry.Register(ClientInformationCodec.Instance);
+        registry.Register(KnownPacksCodec.Instance);
+        registry.Register(ServerKnownPacksCodec.Instance);
+        registry.Register(RegistryDataCodec.Instance);
+        registry.Register(UpdateTagsCodec.Instance);
+        registry.Register(FeatureFlagsCodec.Instance);
+        registry.Register(FinishConfigurationCodec.Instance);
+        registry.Register(AcknowledgeFinishConfigurationCodec.Instance);
         return registry;
     }
 
