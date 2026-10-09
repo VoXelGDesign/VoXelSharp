@@ -12,6 +12,21 @@ public sealed class PacketRegistry
     private readonly Dictionary<(ConnectionState, PacketDirection, int), IPacketCodec> _codecs = [];
 
     /// <summary>
+    /// Creates a registry with the currently implemented packets registered:
+    /// Handshaking (Handshake) and Status (Request/Response, Ping/Pong).
+    /// </summary>
+    public static PacketRegistry CreateM2()
+    {
+        var registry = new PacketRegistry();
+        registry.Register(HandshakeCodec.Instance);
+        registry.Register(StatusRequestCodec.Instance);
+        registry.Register(StatusResponseCodec.Instance);
+        registry.Register(PingRequestCodec.Instance);
+        registry.Register(PongResponseCodec.Instance);
+        return registry;
+    }
+
+    /// <summary>
     /// Registers a codec. Registering a second codec for the same (state, direction, packet ID)
     /// is a bug and throws.
     /// </summary>
