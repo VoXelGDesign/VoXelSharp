@@ -13,11 +13,14 @@ The project is intentionally implemented incrementally.
 
 Do not implement protocol packets based on memory or assumptions.
 
+Before starting any task, read `docs/TROUBLESHOOTING.md` for resolved
+pitfalls (networking API, analyzer rules, data gaps).
+
 ---
 
 ## Repository Layout
 
-VoXelSharp/ ├── src/ │ ├── VoXelSharp.Server/ │ ├── VoXelSharp.Protocol/ │ ├── VoXelSharp.World/ │ └── VoXelSharp.PluginApi/ ├── tests/ │ └── VoXelSharp.Tests/ ├── docs/ │ ├── PROTOCOL.md │ ├── ARCHITECTURE.md │ ├── ROADMAP.md │ └── data/ ├── Dockerfile ├── docker-compose.yml ├── Directory.Build.props ├── Directory.Build.targets ├── Directory.Packages.props ├── global.json ├── .editorconfig ├── .gitignore ├── opencode.jsonc └── VoXelSharp.slnx
+VoXelSharp/ ├── src/ │ ├── VoXelSharp.Server/ │ ├── VoXelSharp.Protocol/ │ ├── VoXelSharp.World/ │ └── VoXelSharp.PluginApi/ ├── tests/ │ └── VoXelSharp.Tests/ ├── docs/ │ ├── PROTOCOL.md │ ├── ARCHITECTURE.md │ ├── ROADMAP.md │ ├── TROUBLESHOOTING.md │ └── data/ ├── Dockerfile ├── docker-compose.yml ├── Directory.Build.props ├── Directory.Build.targets ├── Directory.Packages.props ├── global.json ├── .editorconfig ├── .gitignore ├── opencode.jsonc └── VoXelSharp.slnx
 
 
 ---
