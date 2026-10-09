@@ -1,9 +1,12 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using VoXelSharp.Protocol;
+using VoXelSharp.Protocol.Chunk;
 using VoXelSharp.Protocol.Packets;
 using VoXelSharp.Server.Configuration;
+using VoXelSharp.Server.Play;
 using VoXelSharp.Server.Status;
+using VoXelSharp.World;
 
 namespace VoXelSharp.Server.Connections;
 
@@ -13,7 +16,7 @@ namespace VoXelSharp.Server.Connections;
 /// then writes responses. Malformed input or protocol violations close the connection
 /// (log -&gt; disconnect -&gt; cleanup); they never escape to the accept loop or the process.
 /// </summary>
-public sealed class ConnectionSession
+public sealed class ConnectionSession : IDisposable
 {
     private static readonly Action<ILogger, string, Exception?> _protocolViolation =
         LoggerMessage.Define<string>(LogLevel.Warning, new EventId(1, nameof(ConnectionSession)), "Protocol violation, closing connection: {Message}");
@@ -48,8 +51,21 @@ public sealed class ConnectionSession
     private readonly ConnectionStateMachine _state;
     private readonly IStatusJsonProvider _statusJson;
     private readonly IConfigurationDataProvider _configurationData;
+    private readonly IPlayDataProvider _playData;
     private readonly ILogger _logger;
+    private readonly TimeSpan _keepAliveInterval;
     private ConfigurationStage _configurationStage = ConfigurationStage.None;
+
+    // Play session state, set once the session reaches Play.
+    private GameProfile? _playerProfile;
+    private int _nextTeleportId = 1;
+    private int _nextKeepAliveId = 1;
+    private CancellationTokenSource? _playCts;
+    private Task? _keepAliveTask;
+
+    // Serializes all writes to the transport (the keep-alive loop writes concurrently with
+    // the read-loop responses).
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
 
     // Frame accumulation buffer: incoming bytes are appended until a complete frame is available.
     private byte[] _buffer;
@@ -63,7 +79,9 @@ public sealed class ConnectionSession
     /// <param name="state">Per-connection protocol state machine.</param>
     /// <param name="statusJson">Provides the status JSON used for Status Response packets.</param>
     /// <param name="configurationData">Provides the data sent during the Configuration state.</param>
+    /// <param name="playData">Provides the world/chunk data sent once the session reaches Play.</param>
     /// <param name="logger">Logger for this session.</param>
+    /// <param name="keepAliveInterval">Interval between Play Keep Alive packets (default 15s).</param>
     /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
     public ConnectionSession(
         IDuplexPipe transport,
@@ -71,13 +89,16 @@ public sealed class ConnectionSession
         ConnectionStateMachine state,
         IStatusJsonProvider statusJson,
         IConfigurationDataProvider configurationData,
-        ILogger logger)
+        IPlayDataProvider playData,
+        ILogger logger,
+        TimeSpan? keepAliveInterval = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(statusJson);
         ArgumentNullException.ThrowIfNull(configurationData);
+        ArgumentNullException.ThrowIfNull(playData);
         ArgumentNullException.ThrowIfNull(logger);
 
         _transport = transport;
@@ -85,7 +106,9 @@ public sealed class ConnectionSession
         _state = state;
         _statusJson = statusJson;
         _configurationData = configurationData;
+        _playData = playData;
         _logger = logger;
+        _keepAliveInterval = keepAliveInterval ?? TimeSpan.FromSeconds(15);
         _buffer = new byte[1024];
     }
 
@@ -116,9 +139,33 @@ public sealed class ConnectionSession
         }
         finally
         {
+            _playCts?.Cancel();
+            if (_keepAliveTask is not null)
+            {
+                try
+                {
+                    await _keepAliveTask.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+                catch (TimeoutException)
+                {
+                }
+            }
+
+            _playCts?.Dispose();
+            _writeLock.Dispose();
             await _transport.Output.CompleteAsync();
             _transport.Input.Complete();
         }
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _playCts?.Dispose();
+        _writeLock.Dispose();
     }
 
     private async Task ReadLoopAsync(CancellationToken cancellationToken)
@@ -202,7 +249,34 @@ public sealed class ConnectionSession
                 return false;
 
             case AcknowledgeFinishConfigurationPacket:
-                return HandleAcknowledgeFinishConfiguration();
+                await HandleAcknowledgeFinishConfigurationAsync(cancellationToken);
+                return false;
+
+            case ConfirmTeleportationPacket confirm:
+                return HandleConfirmTeleportation(confirm);
+
+            case SetPlayerPositionAndRotationPacket move:
+                return HandlePlayerMove(move);
+
+            case ChunkBatchReceivedPacket:
+                // The client reports its desired chunk rate; the flat-world join sequence
+                // sends all initial chunks at once, so there is nothing to throttle.
+                return false;
+
+            case PlayerLoadedPacket:
+                // The client has finished loading; no further action is required yet.
+                return false;
+
+            case ClientTickEndPacket:
+                // Expected once per client tick; nothing to do in this milestone.
+                return false;
+
+            case PlayKeepAlivePacket keepAlive:
+                return HandlePlayKeepAlive(keepAlive);
+
+            case PlayPongPacket:
+                // Response to a future clientbound Ping; accepted and ignored for now.
+                return false;
 
             default:
                 throw new InvalidDataException(
@@ -248,7 +322,7 @@ public sealed class ConnectionSession
     /// </summary>
     private async Task HandleLoginStartAsync(LoginStartPacket loginStart, CancellationToken cancellationToken)
     {
-        var profile = new GameProfile(
+        _playerProfile = new GameProfile(
             loginStart.PlayerUuidMsb,
             loginStart.PlayerUuidLsb,
             loginStart.Name,
@@ -257,7 +331,7 @@ public sealed class ConnectionSession
         // Session ID is not yet meaningful here; echo the player's UUID.
         await SendAsync(
             LoginSuccessCodec.Instance,
-            new LoginSuccessPacket(profile, loginStart.PlayerUuidMsb, loginStart.PlayerUuidLsb),
+            new LoginSuccessPacket(_playerProfile, loginStart.PlayerUuidMsb, loginStart.PlayerUuidLsb),
             cancellationToken);
     }
 
@@ -316,9 +390,13 @@ public sealed class ConnectionSession
     /// <summary>
     /// Handles Acknowledge Finish Configuration, the client's confirmation after receiving
     /// Finish Configuration. The wiki states this packet "switches the connection state to
-    /// play", so the session transitions to Play and stays open.
+    /// play". The session transitions to Play and then sends the initial join sequence:
+    /// Login (play), Set Center Chunk, Set Default Spawn Position, Set Simulation Distance,
+    /// Set Held Item, Chunk Batch Start, Chunk Data for the view area, Chunk Batch Finished,
+    /// Set Render Distance, Synchronize Player Position, a Player Info Add Player entry, and
+    /// then periodic Keep Alive while the connection stays open.
     /// </summary>
-    private bool HandleAcknowledgeFinishConfiguration()
+    private async Task HandleAcknowledgeFinishConfigurationAsync(CancellationToken cancellationToken)
     {
         if (_configurationStage != ConfigurationStage.AwaitingFinishAck)
         {
@@ -333,6 +411,216 @@ public sealed class ConnectionSession
         }
 
         _configurationStage = ConfigurationStage.Play;
+
+        // Login (play) is always the first packet in the Play state.
+        await SendAsync(LoginPlayCodec.Instance, BuildLoginPlay(), cancellationToken);
+
+        // Player Info Add Player so the client shows the player in the tab list.
+        await SendPlayerInfoAddAsync(cancellationToken);
+
+        BlockPosition spawn = _playData.SpawnBlock;
+        int centerChunkX = spawn.X >> 4;
+        int centerChunkZ = spawn.Z >> 4;
+
+        await SendAsync(
+            SetCenterChunkCodec.Instance,
+            new SetCenterChunkPacket(centerChunkX, centerChunkZ),
+            cancellationToken);
+
+        await SendAsync(
+            SetDefaultSpawnPositionCodec.Instance,
+            new SetDefaultSpawnPositionPacket(_playData.DimensionName, spawn, 0f, 0f),
+            cancellationToken);
+
+        await SendAsync(
+            SetSimulationDistanceCodec.Instance,
+            new SetSimulationDistancePacket(_playData.SimulationDistance),
+            cancellationToken);
+
+        await SendAsync(SetHeldItemCodec.Instance, new SetHeldItemPacket(0), cancellationToken);
+
+        await SendAsync(ChunkBatchStartCodec.Instance, new ChunkBatchStartPacket(), cancellationToken);
+
+        int radius = _playData.ViewDistance;
+        int sentChunks = 0;
+        for (int chunkZ = centerChunkZ - radius; chunkZ <= centerChunkZ + radius; chunkZ++)
+        {
+            for (int chunkX = centerChunkX - radius; chunkX <= centerChunkX + radius; chunkX++)
+            {
+                await SendChunkDataAsync(chunkX, chunkZ, cancellationToken);
+                sentChunks++;
+            }
+        }
+
+        await SendAsync(
+            ChunkBatchFinishedCodec.Instance,
+            new ChunkBatchFinishedPacket(sentChunks),
+            cancellationToken);
+
+        await SendAsync(
+            SetRenderDistanceCodec.Instance,
+            new SetRenderDistancePacket(_playData.ViewDistance),
+            cancellationToken);
+
+        int teleportId = _nextTeleportId++;
+        await SendAsync(
+            SynchronizePlayerPositionCodec.Instance,
+            new SynchronizePlayerPositionPacket(
+                teleportId,
+                _playData.SpawnX,
+                _playData.SpawnY,
+                _playData.SpawnZ,
+                0.0,
+                0.0,
+                0.0,
+                0f,
+                0f,
+                TeleportFlags.None),
+            cancellationToken);
+
+        // Start the periodic keep-alive loop for the lifetime of this Play session.
+        _playCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _keepAliveTask = Task.Run(() => KeepAliveLoopAsync(_playCts.Token), _playCts.Token);
+    }
+
+    private LoginPlayPacket BuildLoginPlay()
+    {
+        const int maxPlayers = 20;
+        return new LoginPlayPacket(
+            _playData.PlayerEntityId,
+            isHardcore: false,
+            _playData.DimensionNames,
+            maxPlayers,
+            _playData.ViewDistance,
+            _playData.SimulationDistance,
+            reducedDebugInfo: false,
+            enableRespawnScreen: true,
+            doLimitedCrafting: false,
+            _playData.DimensionTypeId,
+            _playData.DimensionName,
+            hashedSeed: 0,
+            PlayerGameMode.Survival,
+            OptionalPlayerGameMode.Undefined,
+            isDebug: false,
+            isFlat: true,
+            hasDeathLocation: false,
+            deathDimensionName: null,
+            deathLocation: null,
+            portalCooldown: 0,
+            seaLevel: 63,
+            onlineMode: false,
+            enforcesSecureChat: false);
+    }
+
+    private async Task SendPlayerInfoAddAsync(CancellationToken cancellationToken)
+    {
+        GameProfile profile = _playerProfile ?? new GameProfile(0, 0, "Player", []);
+        var entry = new PlayerInfoEntryData(
+            profile.PlayerUuidMsb,
+            profile.PlayerUuidLsb,
+            new PlayerInfoAddPlayerData(profile.Username, profile.Properties),
+            ChatSession: null,
+            GameMode: (int)PlayerGameMode.Survival,
+            Listed: true,
+            Ping: 0,
+            DisplayName: null,
+            ListPriority: 0,
+            HatVisible: false);
+
+        await SendAsync(
+            PlayerInfoUpdateCodec.Instance,
+            new PlayerInfoUpdatePacket(PlayerInfoActions.AddPlayer, [entry]),
+            cancellationToken);
+    }
+
+    private async Task SendChunkDataAsync(int chunkX, int chunkZ, CancellationToken cancellationToken)
+    {
+        FlatWorldChunk worldChunk = _playData.GenerateChunk(chunkX, chunkZ);
+        byte[] data = ChunkDataIO.EncodeSections(worldChunk.Sections);
+
+        var packet = new ChunkDataPacket(
+            chunkX,
+            chunkZ,
+            worldChunk.Heightmaps,
+            data,
+            [],
+            worldChunk.Light);
+
+        await SendAsync(ChunkDataCodec.Instance, packet, cancellationToken);
+    }
+
+    /// <summary>
+    /// Periodically sends a Keep Alive so the client does not time out. The echo check in
+    /// <see cref="HandlePlayKeepAlive"/> validates that the client responds with the expected ID.
+    /// </summary>
+    private async Task KeepAliveLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(_keepAliveInterval);
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                int keepAliveId = _nextKeepAliveId++;
+                await SendAsync(
+                    PlayKeepAliveCodec.Instance,
+                    new PlayKeepAlivePacket(keepAliveId),
+                    cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Session shutdown.
+        }
+    }
+
+    private bool HandleConfirmTeleportation(ConfirmTeleportationPacket confirm)
+    {
+        // The client echoes the Teleport ID from Synchronize Player Position. Any previous
+        // movement packets before the matching confirmation are ignored (wiki Synchronize
+        // Player Position notes), so a mismatched confirmation is a protocol violation.
+        if (_configurationStage != ConfigurationStage.Play)
+        {
+            throw new InvalidDataException("Confirm Teleportation received before the session reached Play.");
+        }
+
+        if (confirm.TeleportId < 1 || confirm.TeleportId > _nextTeleportId)
+        {
+            throw new InvalidDataException(
+                $"Confirm Teleportation ID {confirm.TeleportId} does not match any issued teleport.");
+        }
+
+        return false;
+    }
+
+    private bool HandlePlayerMove(SetPlayerPositionAndRotationPacket move)
+    {
+        if (_configurationStage != ConfigurationStage.Play)
+        {
+            throw new InvalidDataException("Player movement received before the session reached Play.");
+        }
+
+        // Reject non-finite coordinates (docs/PROTOCOL.md "Position and Coordinates").
+        if (double.IsNaN(move.X) || double.IsInfinity(move.X)
+            || double.IsNaN(move.FeetY) || double.IsInfinity(move.FeetY)
+            || double.IsNaN(move.Z) || double.IsInfinity(move.Z))
+        {
+            throw new InvalidDataException("Player position contains a non-finite value.");
+        }
+
+        return false;
+    }
+
+    private bool HandlePlayKeepAlive(PlayKeepAlivePacket keepAlive)
+    {
+        // The client echoes one of the Keep Alive IDs the server has issued. Any unknown ID
+        // means the client is out of sync; treat it as a protocol violation (vanilla only
+        // recognizes IDs from the pending keep-alive queue).
+        if (keepAlive.KeepAliveId < 1 || keepAlive.KeepAliveId >= _nextKeepAliveId)
+        {
+            throw new InvalidDataException(
+                $"Keep Alive ID {keepAlive.KeepAliveId} was never issued by this session.");
+        }
+
         return false;
     }
 
@@ -345,8 +633,17 @@ public sealed class ConnectionSession
         byte[] frame = new byte[FrameLength.MaxEncodedLength + payload.Length];
         int written = FrameCodec.EncodeFrame(payload, frame);
 
-        await _transport.Output.WriteAsync(frame.AsMemory(0, written), cancellationToken);
-        await _transport.Output.FlushAsync(cancellationToken);
+        // Serialize writes: the keep-alive loop sends concurrently with read-loop responses.
+        await _writeLock.WaitAsync(cancellationToken);
+        try
+        {
+            await _transport.Output.WriteAsync(frame.AsMemory(0, written), cancellationToken);
+            await _transport.Output.FlushAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
     }
 
     private void AppendToBuffer(ReadOnlySequence<byte> data)

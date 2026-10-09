@@ -5,7 +5,9 @@ using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Packets;
 using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Connections;
+using VoXelSharp.Server.Play;
 using VoXelSharp.Server.Status;
+using VoXelSharp.World;
 
 namespace VoXelSharp.Tests;
 
@@ -211,6 +213,236 @@ public class ConnectionSessionTests
         Assert.Contains("\"protocol\":777", packet.Json);
     }
 
+    [Fact]
+    public async Task PlayJoinSequenceSendsLoginChunksAndTeleport()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        // Full login + configuration exchange, ending in Acknowledge Finish Configuration.
+        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Login));
+        await harness.ClientSendAsync(LoginStartCodec.Instance, new LoginStartPacket("Player1", 1, 2));
+        await harness.ReadServerFrameAsync(); // Login Success
+        await harness.ClientSendAsync(LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket());
+        await harness.ReadServerFrameAsync(); // Known Packs (clientbound)
+        await harness.ClientSendAsync(ServerKnownPacksCodec.Instance, new KnownPacksPacket([]));
+
+        var provider = new ServerConfigurationDataProvider();
+        for (int i = 0; i < provider.RegistryData.Count; i++)
+        {
+            await harness.ReadServerFrameAsync(); // Registry Data
+        }
+
+        await harness.ReadServerFrameAsync(); // Update Tags
+        await harness.ReadServerFrameAsync(); // Feature Flags
+        await harness.ReadServerFrameAsync(); // Finish Configuration
+        await harness.ClientSendAsync(AcknowledgeFinishConfigurationCodec.Instance, new AcknowledgeFinishConfigurationPacket());
+
+        // The Play join sequence in order:
+        // Login (play), Player Info Update, Set Center Chunk, Set Default Spawn Position,
+        // Set Simulation Distance, Set Held Item, Chunk Batch Start.
+        var loginPlay = Assert.IsType<LoginPlayPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal("minecraft:overworld", loginPlay.DimensionName);
+        Assert.True(loginPlay.IsFlat);
+        Assert.Equal(4, loginPlay.ViewDistance);
+
+        var playerInfo = Assert.IsType<PlayerInfoUpdatePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.True(playerInfo.Actions.HasFlag(PlayerInfoActions.AddPlayer));
+        Assert.Equal("Player1", playerInfo.Players[0].AddPlayer!.Name);
+
+        var centerChunk = Assert.IsType<SetCenterChunkPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(0, centerChunk.ChunkX);
+        Assert.Equal(0, centerChunk.ChunkZ);
+
+        Assert.IsType<SetDefaultSpawnPositionPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetSimulationDistancePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetHeldItemPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+
+        // Chunk Batch Start, then a (2*radius+1)^2 square of Chunk Data packets.
+        Assert.IsType<ChunkBatchStartPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+
+        const int radius = 4;
+        int expectedChunkCount = (2 * radius + 1) * (2 * radius + 1);
+        var seenChunks = new HashSet<(int, int)>();
+        for (int i = 0; i < expectedChunkCount; i++)
+        {
+            var chunk = Assert.IsType<ChunkDataPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+            Assert.True(seenChunks.Add((chunk.ChunkX, chunk.ChunkZ)), $"Duplicate chunk ({chunk.ChunkX},{chunk.ChunkZ}).");
+            Assert.True(chunk.Data.Length > 0);
+        }
+
+        Assert.Equal(expectedChunkCount, seenChunks.Count);
+
+        var batchFinished = Assert.IsType<ChunkBatchFinishedPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(expectedChunkCount, batchFinished.BatchSize);
+
+        var renderDistance = Assert.IsType<SetRenderDistancePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(4, renderDistance.ViewDistance);
+
+        var teleport = Assert.IsType<SynchronizePlayerPositionPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(1, teleport.TeleportId);
+        Assert.Equal(FlatWorldGenerator.SurfaceY + 1, teleport.Y);
+
+        // The client confirms the teleport and reports movement; the session stays open.
+        await harness.ClientSendAsync(ConfirmTeleportationCodec.Instance, new ConfirmTeleportationPacket(1, 0.5, -60.0, 0.5, 0f, 0f));
+        await harness.ClientSendAsync(
+            SetPlayerPositionAndRotationCodec.Instance,
+            new SetPlayerPositionAndRotationPacket(0.5, -60.0, 0.5, 0f, 0f, 0x01));
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task PlayJoinSequenceCompletesFullConfigurationFromScratch()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartLoginThenConfigurationAsync(harness, registry);
+        await harness.ClientSendAsync(AcknowledgeFinishConfigurationCodec.Instance, new AcknowledgeFinishConfigurationPacket());
+
+        // Consume the full Play start so the keep-alive loop has a chance to run, then send
+        // the matching echo before the session is torn down.
+        var loginPlay = Assert.IsType<LoginPlayPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.True(loginPlay.IsFlat);
+
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task ConfirmTeleportWithUnknownIdClosesConnection()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // The only issued teleport has ID 1; a Confirm Teleportation with an out-of-range ID
+        // is a protocol violation.
+        await harness.ClientSendAsync(ConfirmTeleportationCodec.Instance, new ConfirmTeleportationPacket(99, 0, 0, 0, 0f, 0f));
+
+        await harness.WaitForSessionAsync();
+    }
+
+    [Fact]
+    public async Task KeepAliveMismatchClosesConnection()
+    {
+        // A client echoing a Keep Alive ID that was never issued is out of sync and is
+        // disconnected.
+        await using var harness = new SessionHarness(keepAliveInterval: TimeSpan.FromMilliseconds(50));
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Wait until the server has sent at least one Keep Alive.
+        await AwaitKeepAliveFrameAsync(harness, registry);
+
+        // Echo an ID that this session never issued (IDs start at 1 and increment slowly).
+        await harness.ClientSendAsync(ServerPlayKeepAliveCodec.Instance, new PlayKeepAlivePacket(9999));
+
+        await harness.WaitForSessionAsync();
+    }
+
+    [Fact]
+    public async Task KeepAliveEchoKeepsSessionOpen()
+    {
+        await using var harness = new SessionHarness(keepAliveInterval: TimeSpan.FromMilliseconds(50));
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Receive the server Keep Alive and echo the exact ID back.
+        byte[] keepAlivePayload = await AwaitKeepAliveFrameAsync(harness, registry);
+        var sent = Assert.IsType<PlayKeepAlivePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, keepAlivePayload));
+        await harness.ClientSendAsync(ServerPlayKeepAliveCodec.Instance, new PlayKeepAlivePacket(sent.KeepAliveId));
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    private static async Task StartLoginThenConfigurationAsync(SessionHarness harness, PacketRegistry registry)
+    {
+        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Login));
+        await harness.ClientSendAsync(LoginStartCodec.Instance, new LoginStartPacket("Player1", 1, 2));
+        await harness.ReadServerFrameAsync(); // Login Success
+        await harness.ClientSendAsync(LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket());
+        await harness.ReadServerFrameAsync(); // Known Packs (clientbound)
+        await harness.ClientSendAsync(ServerKnownPacksCodec.Instance, new KnownPacksPacket([]));
+
+        var provider = new ServerConfigurationDataProvider();
+        for (int i = 0; i < provider.RegistryData.Count; i++)
+        {
+            await harness.ReadServerFrameAsync(); // Registry Data
+        }
+
+        await harness.ReadServerFrameAsync(); // Update Tags
+        await harness.ReadServerFrameAsync(); // Feature Flags
+        await harness.ReadServerFrameAsync(); // Finish Configuration
+    }
+
+    /// <summary>Drives the client through login and Configuration into Play, consuming the join sequence header.</summary>
+    private static async Task StartPlayAsync(SessionHarness harness, PacketRegistry registry)
+    {
+        await StartLoginThenConfigurationAsync(harness, registry);
+        await harness.ClientSendAsync(AcknowledgeFinishConfigurationCodec.Instance, new AcknowledgeFinishConfigurationPacket());
+
+        Assert.IsType<LoginPlayPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<PlayerInfoUpdatePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetCenterChunkPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetDefaultSpawnPositionPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetSimulationDistancePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetHeldItemPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<ChunkBatchStartPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+
+        const int radius = 4;
+        int expectedChunkCount = (2 * radius + 1) * (2 * radius + 1);
+        for (int i = 0; i < expectedChunkCount; i++)
+        {
+            await harness.ReadServerFrameAsync(); // Chunk Data
+        }
+
+        Assert.IsType<ChunkBatchFinishedPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetRenderDistancePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SynchronizePlayerPositionPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+    }
+
+    private static async Task<byte[]> AwaitKeepAliveFrameAsync(SessionHarness harness, PacketRegistry registry)
+    {
+        // The keep-alive loop emits one frame per interval; drive until a Keep Alive is seen.
+        while (true)
+        {
+            byte[] frame = await harness.ReadServerFrameAsync();
+            if (registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, frame) is PlayKeepAlivePacket)
+            {
+                return frame;
+            }
+        }
+    }
+
     private static byte[] PacketPayloadFactory<TPacket>(PacketCodec<TPacket> codec, TPacket packet)
         where TPacket : IPacket
     {
@@ -233,10 +465,10 @@ public class ConnectionSessionTests
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _sessionTask;
         private readonly ConnectionStateMachine _stateMachine;
-        private readonly byte[] _received = new byte[4096];
+        private byte[] _received = new byte[4096];
         private int _receivedCount;
 
-        public SessionHarness()
+        public SessionHarness(TimeSpan? keepAliveInterval = null)
         {
             var serverTransport = new DuplexPipe(_clientToServer.Reader, _serverToClient.Writer);
             _stateMachine = new ConnectionStateMachine();
@@ -246,7 +478,9 @@ public class ConnectionSessionTests
                 _stateMachine,
                 new ServerStatusJsonProvider(new ServerStatusData("A Minecraft Server", 20, 0)),
                 new ServerConfigurationDataProvider(),
-                NullLogger<ConnectionSession>.Instance);
+                new ServerPlayDataProvider(playerEntityId: 1),
+                NullLogger<ConnectionSession>.Instance,
+                keepAliveInterval);
             _sessionTask = session.RunAsync(_cts.Token);
         }
 
@@ -343,6 +577,13 @@ public class ConnectionSessionTests
 
         private void Append(ReadOnlySequence<byte> buffer)
         {
+            int required = _receivedCount + (int)buffer.Length;
+            if (required > _received.Length)
+            {
+                int newSize = Math.Max(required, _received.Length * 2);
+                Array.Resize(ref _received, newSize);
+            }
+
             foreach (ReadOnlyMemory<byte> segment in buffer)
             {
                 segment.Span.CopyTo(_received.AsSpan(_receivedCount));

@@ -5,6 +5,7 @@ using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Packets;
 using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Connections;
+using VoXelSharp.Server.Play;
 using VoXelSharp.Server.Status;
 
 namespace VoXelSharp.Server;
@@ -48,6 +49,7 @@ public sealed class MinecraftServer : IAsyncDisposable
     private readonly ILogger _logger;
     private Task? _acceptTask;
     private bool _started;
+    private int _nextEntityId;
 
     /// <summary>
     /// Creates a server.
@@ -159,7 +161,9 @@ public sealed class MinecraftServer : IAsyncDisposable
                 await using NetworkStream stream = client.GetStream();
                 var pipe = new StreamDuplexPipe(stream);
                 var stateMachine = new ConnectionStateMachine();
-                var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, _logger);
+                int entityId = Interlocked.Increment(ref _nextEntityId);
+                var playData = new ServerPlayDataProvider(entityId);
+                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _logger);
 
                 await session.RunAsync(_stoppingCts.Token);
             }
