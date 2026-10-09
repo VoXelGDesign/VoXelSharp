@@ -122,6 +122,22 @@ length-prefixed). Used by Light Data masks and elsewhere.
 
 Source: Java Edition protocol/Data types (wiki, 2026-10-09).
 
+## Game Profile
+
+A player profile as sent in Login Success, Resolvable Profile "Complete", and Player Info
+Update "Add Player" properties. Wire order:
+
+- `UUID`: 2 longs (most significant bits first).
+- `Username`: String (16).
+- `Properties`: Prefixed Array (16) of:
+  - `Name`: String (64)
+  - `Value`: String (32767)
+  - `Signature`: Prefixed Optional String (1024)
+
+The signature is **per property**; there is no profile-level signature.
+
+Source: Java Edition protocol/Data types (wiki, 2026-10-09, `#Game_Profile` section).
+
 ## Text Component
 
 A chat-style text component encoded as **NBT**:

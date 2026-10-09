@@ -252,8 +252,7 @@ public sealed class ConnectionSession
             loginStart.PlayerUuidMsb,
             loginStart.PlayerUuidLsb,
             loginStart.Name,
-            [],
-            null);
+            []);
 
         // Session ID is not yet meaningful here; echo the player's UUID.
         await SendAsync(

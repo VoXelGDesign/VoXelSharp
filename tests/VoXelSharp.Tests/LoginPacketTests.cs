@@ -229,11 +229,11 @@ public class LoginPacketTests
     {
         var properties = new ProfileProperty[]
         {
-            new("textures", "ew0K..."),
+            new("textures", "ew0K...", null),
         };
         var profile = new GameProfile(
             -6148914691236517206L, -4919883347990483973L,
-            "Player1", properties, null);
+            "Player1", properties);
         var original = new LoginSuccessPacket(profile, -3689348815808387380L, -2459625783626286083L);
 
         using var writer = new PacketWriterScope();
@@ -249,15 +249,17 @@ public class LoginPacketTests
         Assert.Single(decoded.Profile.Properties);
         Assert.Equal("textures", decoded.Profile.Properties[0].Name);
         Assert.Equal("ew0K...", decoded.Profile.Properties[0].Value);
-        Assert.Null(decoded.Profile.Signature);
+        Assert.Null(decoded.Profile.Properties[0].Signature);
         Assert.Equal(-3689348815808387380L, decoded.SessionUuidMsb);
         Assert.Equal(-2459625783626286083L, decoded.SessionUuidLsb);
     }
 
     [Fact]
-    public void LoginSuccessWithSignature()
+    public void LoginSuccessWithPropertySignature()
     {
-        var profile = new GameProfile(1, 2, "TestPlayer", [], "signature_data");
+        var profile = new GameProfile(
+            1, 2, "TestPlayer",
+            [new ProfileProperty("textures", "ew0K", "signature_data")]);
         var original = new LoginSuccessPacket(profile, 3, 4);
 
         using var writer = new PacketWriterScope();
@@ -267,7 +269,7 @@ public class LoginPacketTests
         var decoded = Assert.IsType<LoginSuccessPacket>(
             registry.Decode(_login, PacketDirection.Clientbound, writer.Bytes));
 
-        Assert.Equal("signature_data", decoded.Profile.Signature);
+        Assert.Equal("signature_data", decoded.Profile.Properties[0].Signature);
     }
 
     [Fact]
@@ -276,10 +278,10 @@ public class LoginPacketTests
         var props = new ProfileProperty[GameProfile.MaxPropertiesCount];
         for (int i = 0; i < props.Length; i++)
         {
-            props[i] = new("key" + i, "value" + i);
+            props[i] = new("key" + i, "value" + i, null);
         }
 
-        var packet = new LoginSuccessPacket(new GameProfile(0, 0, "U", props, null), 0, 0);
+        var packet = new LoginSuccessPacket(new GameProfile(0, 0, "U", props), 0, 0);
 
         using var writer = new PacketWriterScope();
         LoginSuccessCodec.Instance.Encode(packet, writer.Writer);
@@ -323,7 +325,7 @@ public class LoginPacketTests
     [Fact]
     public void LoginSuccessTrailingBytes()
     {
-        var packet = new LoginSuccessPacket(new GameProfile(0, 0, "U", [], null), 0, 0);
+        var packet = new LoginSuccessPacket(new GameProfile(0, 0, "U", []), 0, 0);
 
         using var writer = new PacketWriterScope();
         LoginSuccessCodec.Instance.Encode(packet, writer.Writer);
@@ -339,7 +341,7 @@ public class LoginPacketTests
     [Fact]
     public void GameProfileEmptyProperties()
     {
-        var profile = new GameProfile(1, 2, "Player", [], "sig");
+        var profile = new GameProfile(1, 2, "Player", []);
 
         using var writer = new PacketWriterScope();
         GameProfileIO.Encode(profile, writer.Writer);
@@ -351,14 +353,13 @@ public class LoginPacketTests
         Assert.Equal(2, decoded.PlayerUuidLsb);
         Assert.Equal("Player", decoded.Username);
         Assert.Empty(decoded.Properties);
-        Assert.Equal("sig", decoded.Signature);
         Assert.Equal(0, reader.Remaining);
     }
 
     [Fact]
-    public void GameProfileSignatureOptional()
+    public void GameProfilePropertySignatureOptional()
     {
-        var profile = new GameProfile(0, 0, "U", [], null);
+        var profile = new GameProfile(0, 0, "U", [new ProfileProperty("a", "b", null)]);
 
         using var writer = new PacketWriterScope();
         GameProfileIO.Encode(profile, writer.Writer);
@@ -366,7 +367,66 @@ public class LoginPacketTests
         var reader = new PacketReader(writer.Bytes);
         var decoded = GameProfileIO.Decode(ref reader);
 
-        Assert.Null(decoded.Signature);
+        Assert.Null(decoded.Properties[0].Signature);
+    }
+
+    [Fact]
+    public void GameProfilePropertySignatureRoundTrips()
+    {
+        var profile = new GameProfile(0, 0, "U", [new ProfileProperty("a", "b", "sig")]);
+
+        using var writer = new PacketWriterScope();
+        GameProfileIO.Encode(profile, writer.Writer);
+
+        var reader = new PacketReader(writer.Bytes);
+        var decoded = GameProfileIO.Decode(ref reader);
+
+        Assert.Equal("sig", decoded.Properties[0].Signature);
+        Assert.Equal(0, reader.Remaining);
+    }
+
+    [Fact]
+    public void GameProfileKnownWireForm()
+    {
+        // Profile: UUID (0, 0), Username "U", one property {Name "a", Value "b", no signature}.
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteLong(0);
+        writer.Writer.WriteLong(0);
+        writer.Writer.WriteString("U", GameProfile.MaxUsernameLength);
+        writer.Writer.WriteVarInt(1);
+        writer.Writer.WriteString("a", GameProfile.MaxPropertyNameLength);
+        writer.Writer.WriteString("b", GameProfile.MaxPropertyValueLength);
+        writer.Writer.WriteBoolean(false); // no signature
+
+        var reader = new PacketReader(writer.Bytes);
+        var decoded = GameProfileIO.Decode(ref reader);
+
+        Assert.Single(decoded.Properties);
+        Assert.Equal("a", decoded.Properties[0].Name);
+        Assert.Equal("b", decoded.Properties[0].Value);
+        Assert.Null(decoded.Properties[0].Signature);
+        Assert.Equal(0, reader.Remaining);
+    }
+
+    [Fact]
+    public void GameProfileSignatureWireForm()
+    {
+        // One property {Name "a", Value "b", Signature "sig"}.
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteLong(0);
+        writer.Writer.WriteLong(0);
+        writer.Writer.WriteString("U", GameProfile.MaxUsernameLength);
+        writer.Writer.WriteVarInt(1);
+        writer.Writer.WriteString("a", GameProfile.MaxPropertyNameLength);
+        writer.Writer.WriteString("b", GameProfile.MaxPropertyValueLength);
+        writer.Writer.WriteBoolean(true);
+        writer.Writer.WriteString("sig", GameProfile.MaxSignatureLength);
+
+        var reader = new PacketReader(writer.Bytes);
+        var decoded = GameProfileIO.Decode(ref reader);
+
+        Assert.Equal("sig", decoded.Properties[0].Signature);
+        Assert.Equal(0, reader.Remaining);
     }
 
     // ---- Registry / helpers ----

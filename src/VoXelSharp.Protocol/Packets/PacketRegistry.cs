@@ -58,6 +58,8 @@ public sealed class PacketRegistry
         registry.Register(ClientTickEndCodec.Instance);
         registry.Register(PlayPongCodec.Instance);
         registry.Register(SystemChatCodec.Instance);
+        registry.Register(PlayerInfoUpdateCodec.Instance);
+        registry.Register(PlayerInfoRemoveCodec.Instance);
         return registry;
     }
 

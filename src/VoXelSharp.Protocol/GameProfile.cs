@@ -5,15 +5,16 @@ namespace VoXelSharp.Protocol;
 /// Wire format per the Minecraft Wiki "Data types" article (Game Profile section):
 ///   UUID (2 longs: most significant bits first),
 ///   Username (String 16),
-///   Properties (Prefixed Array (16) of {Name: String 64, Value: String 32767}),
-///   Signature (Prefixed Optional String 1024).
+///   Properties (Prefixed Array (16) of {Name: String 64, Value: String 32767,
+///     Signature: Prefixed Optional String 1024}).
+/// The signature is a per-property field; there is no profile-level signature.
+/// Source: docs/data/_raw/_packets.raw.html (wiki capture, 2026-10-09).
 /// </summary>
 public sealed record GameProfile(
     long PlayerUuidMsb,
     long PlayerUuidLsb,
     string Username,
-    ProfileProperty[] Properties,
-    string? Signature)
+    ProfileProperty[] Properties)
 {
     /// <summary>Maximum username length in UTF-16 code units.</summary>
     public const int MaxUsernameLength = 16;
@@ -27,12 +28,15 @@ public sealed record GameProfile(
     /// <summary>Maximum property value length.</summary>
     public const int MaxPropertyValueLength = 32767;
 
-    /// <summary>Maximum signature length.</summary>
+    /// <summary>Maximum per-property signature length.</summary>
     public const int MaxSignatureLength = 1024;
 }
 
-/// <summary>A single key-value property in a <see cref="GameProfile"/>.</summary>
-public sealed record ProfileProperty(string Name, string Value);
+/// <summary>
+/// A single key-value property in a <see cref="GameProfile"/> or the Player Info Update
+/// "Add Player" action. The signature is optional and encoded as a Prefixed Optional String.
+/// </summary>
+public sealed record ProfileProperty(string Name, string Value, string? Signature);
 
 /// <summary>
 /// Reads and writes a <see cref="GameProfile"/> from/to a packet reader/writer.
@@ -48,7 +52,15 @@ public static class GameProfileIO
         long lsb = reader.ReadLong();
         string username = reader.ReadString(GameProfile.MaxUsernameLength);
 
-        // Prefixed Array (16) of {Name: String 64, Value: String 32767}
+        ProfileProperty[] properties = ReadProperties(ref reader);
+
+        return new GameProfile(msb, lsb, username, properties);
+    }
+
+    /// <summary>Reads a Prefixed Array (16) of profile properties, each with an optional signature.</summary>
+    public static ProfileProperty[] ReadProperties(ref PacketReader reader)
+    {
+        // Prefixed Array (16) of {Name: String 64, Value: String 32767, Signature: Prefixed Optional String 1024}
         int propertyCount = reader.ReadVarInt();
         if (propertyCount < 0 || propertyCount > GameProfile.MaxPropertiesCount)
         {
@@ -61,18 +73,17 @@ public static class GameProfileIO
         {
             string propName = reader.ReadString(GameProfile.MaxPropertyNameLength);
             string propValue = reader.ReadString(GameProfile.MaxPropertyValueLength);
-            properties[i] = new ProfileProperty(propName, propValue);
+
+            string? signature = null;
+            if (reader.ReadBoolean())
+            {
+                signature = reader.ReadString(GameProfile.MaxSignatureLength);
+            }
+
+            properties[i] = new ProfileProperty(propName, propValue, signature);
         }
 
-        // Prefixed Optional String (1024)
-        string? signature = null;
-        bool hasSignature = reader.ReadBoolean();
-        if (hasSignature)
-        {
-            signature = reader.ReadString(GameProfile.MaxSignatureLength);
-        }
-
-        return new GameProfile(msb, lsb, username, properties, signature);
+        return properties;
     }
 
     /// <summary>Writes <paramref name="profile"/> to <paramref name="writer"/>.</summary>
@@ -84,20 +95,33 @@ public static class GameProfileIO
         writer.WriteLong(profile.PlayerUuidMsb);
         writer.WriteLong(profile.PlayerUuidLsb);
         writer.WriteString(profile.Username, GameProfile.MaxUsernameLength);
+        WriteProperties(profile.Properties, writer);
+    }
 
-        // Prefixed Array (16) of {Name: String 64, Value: String 32767}
-        writer.WriteVarInt(profile.Properties.Length);
-        for (int i = 0; i < profile.Properties.Length; i++)
+    /// <summary>Writes a Prefixed Array (16) of profile properties, each with an optional signature.</summary>
+    public static void WriteProperties(ProfileProperty[] properties, PacketWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+
+        if (properties.Length > GameProfile.MaxPropertiesCount)
         {
-            writer.WriteString(profile.Properties[i].Name, GameProfile.MaxPropertyNameLength);
-            writer.WriteString(profile.Properties[i].Value, GameProfile.MaxPropertyValueLength);
+            throw new ArgumentException(
+                $"Property count {properties.Length} exceeds the maximum of {GameProfile.MaxPropertiesCount}.",
+                nameof(properties));
         }
 
-        // Prefixed Optional String (1024)
-        writer.WriteBoolean(profile.Signature is not null);
-        if (profile.Signature is not null)
+        writer.WriteVarInt(properties.Length);
+        for (int i = 0; i < properties.Length; i++)
         {
-            writer.WriteString(profile.Signature, GameProfile.MaxSignatureLength);
+            ProfileProperty property = properties[i];
+            writer.WriteString(property.Name, GameProfile.MaxPropertyNameLength);
+            writer.WriteString(property.Value, GameProfile.MaxPropertyValueLength);
+
+            writer.WriteBoolean(property.Signature is not null);
+            if (property.Signature is not null)
+            {
+                writer.WriteString(property.Signature, GameProfile.MaxSignatureLength);
+            }
         }
     }
 }
