@@ -1,23 +1,38 @@
+using Microsoft.Extensions.Logging;
+using VoXelSharp.Protocol.Packets;
+using VoXelSharp.Server.Status;
+
 namespace VoXelSharp.Server;
 
 public class Worker(ILogger<Worker> logger) : BackgroundService
 {
-    private const string _messageTemplate = "Worker running at: {Time}";
-    private static readonly Action<ILogger, DateTimeOffset, Exception?> _workerRunning =
-        LoggerMessage.Define<DateTimeOffset>(
-            LogLevel.Information,
-            new EventId(0, nameof(Worker)),
-            _messageTemplate);
+    private readonly MinecraftServer _server = Init(logger);
+
+    private static MinecraftServer Init(ILogger logger)
+    {
+        int port = 25565;
+        int maxPlayers = 20;
+        string description = "A VoXelSharp Server";
+
+        var registry = PacketRegistry.CreateM2();
+        var statusProvider = new ServerStatusJsonProvider(new ServerStatusData(description, maxPlayers, 0));
+        return new MinecraftServer(registry, statusProvider, logger, port);
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        _server.Start();
+
+        try
         {
-            if (logger.IsEnabled(LogLevel.Information))
+            while (!stoppingToken.IsCancellationRequested)
             {
-                _workerRunning(logger, DateTimeOffset.Now, null);
+                await Task.Delay(1000, stoppingToken);
             }
-            await Task.Delay(1000, stoppingToken);
+        }
+        finally
+        {
+            await _server.StopAsync();
         }
     }
 }
