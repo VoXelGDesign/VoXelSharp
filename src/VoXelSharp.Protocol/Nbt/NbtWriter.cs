@@ -24,6 +24,20 @@ public static class NbtWriter
     }
 
     /// <summary>
+    /// Writes any NBT node as a Network NBT root: the node's type byte followed directly by its
+    /// payload, with no root name length prefix. Used for fields whose root may be a non-compound
+    /// (e.g. a Text Component encoded as a String tag; docs/data/wire_types.md).
+    /// </summary>
+    public static void WriteRootNode(PacketWriter writer, NbtNode node)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(node);
+
+        writer.WriteByte((byte)node.TagType);
+        WritePayload(writer, node);
+    }
+
+    /// <summary>
     /// Writes a named compound tag (type byte + name + children + TAG_End). Used for compounds
     /// nested inside a parent compound.
     /// </summary>

@@ -26,6 +26,23 @@ public static class NbtReader
         return ReadCompoundPayload(ref reader);
     }
 
+    /// <summary>
+    /// Reads a Network NBT root of any tag type: the type byte followed directly by its payload,
+    /// with no root name length prefix (docs/data/wire_types.md). Used for fields whose root may
+    /// be a non-compound (e.g. a Text Component encoded as a String tag).
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown on truncated or malformed data.</exception>
+    public static NbtNode ReadRootNode(ref PacketReader reader)
+    {
+        NbtTagType type = ReadType(ref reader);
+        if (type == NbtTagType.End)
+        {
+            throw new InvalidDataException("NBT root cannot be TAG_End.");
+        }
+
+        return ReadPayload(ref reader, type);
+    }
+
     private static NbtTagType ReadType(ref PacketReader reader)
     {
         byte value = reader.ReadByte();

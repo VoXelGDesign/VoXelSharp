@@ -121,3 +121,21 @@ Distinct from `Fixed BitSet (n)` (an `n`-bit set encoded as `ceil(n / 8)` bytes;
 length-prefixed). Used by Light Data masks and elsewhere.
 
 Source: Java Edition protocol/Data types (wiki, 2026-10-09).
+
+## Text Component
+
+A chat-style text component encoded as **NBT**:
+
+- As a **String tag** when the component contains only text (no styling, no events).
+- As a **Compound tag** in every other case.
+
+On the wire, a Text Component is a Network NBT **root** of the chosen tag type: the type byte
+followed directly by the payload, with no root name-length prefix. When writing a plain text
+component, encode a `TAG_String` root (`0x08` + unsigned-short modified-UTF-8 length + bytes);
+when a compound is needed, use a `TAG_Compound` root (`0x0A` + children + `TAG_End`).
+
+The related `JSON Text Component` type (used by some packets such as Status Response) is a JSON
+string, not NBT; max permitted decode length 262,144, though the vanilla server refuses to
+encode longer than 32,767.
+
+Source: Java Edition protocol/Data types (wiki, 2026-10-09).

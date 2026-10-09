@@ -196,4 +196,130 @@ public class NbtTests
         }
         Assert.True(caught);
     }
+
+    // ---- Non-compound roots (WriteRootNode / ReadRootNode, used by Text Component) ----
+
+    private static readonly byte[] _knownStringRoot =
+    {
+        // Network NBT String root "hello": 0x08 type, unsigned-short length 5, then ASCII bytes.
+        0x08,
+        0x00, 0x05,
+        (byte)'h', (byte)'e', (byte)'l', (byte)'l', (byte)'o',
+    };
+
+    [Fact]
+    public void ReadKnownGoodStringRoot()
+    {
+        var reader = new PacketReader(_knownStringRoot);
+
+        var node = NbtReader.ReadRootNode(ref reader);
+
+        Assert.Equal(0, reader.Remaining);
+        Assert.Equal("hello", Assert.IsType<NbtString>(node).Value);
+    }
+
+    [Fact]
+    public void WriteMatchesKnownGoodStringRoot()
+    {
+        var writer = new PacketWriter();
+        NbtWriter.WriteRootNode(writer, new NbtString("hello"));
+
+        Assert.Equal(_knownStringRoot, writer.ToArray());
+    }
+
+    [Fact]
+    public void RootNodeStringRoundTrips()
+    {
+        var writer = new PacketWriter();
+        NbtWriter.WriteRootNode(writer, new NbtString("Hello, world!"));
+
+        var reader = new PacketReader(writer.ToArray());
+        var node = NbtReader.ReadRootNode(ref reader);
+
+        Assert.Equal(0, reader.Remaining);
+        Assert.Equal("Hello, world!", Assert.IsType<NbtString>(node).Value);
+    }
+
+    [Fact]
+    public void RootNodeCompoundRoundTrips()
+    {
+        var compound = new NbtCompound(
+        [
+            new NbtNamedTag("text", new NbtString("Hi")),
+            new NbtNamedTag("bold", new NbtByte(1)),
+        ]);
+
+        var writer = new PacketWriter();
+        NbtWriter.WriteRootNode(writer, compound);
+
+        var reader = new PacketReader(writer.ToArray());
+        var node = NbtReader.ReadRootNode(ref reader);
+
+        Assert.Equal(0, reader.Remaining);
+        var decoded = Assert.IsType<NbtCompound>(node);
+        Assert.Equal("Hi", Assert.IsType<NbtString>(decoded.Tags[0].Value).Value);
+        Assert.Equal(1, Assert.IsType<NbtByte>(decoded.Tags[1].Value).Value);
+    }
+
+    [Fact]
+    public void RootNodeIntRoundTrips()
+    {
+        var writer = new PacketWriter();
+        NbtWriter.WriteRootNode(writer, new NbtInt(-42));
+
+        var reader = new PacketReader(writer.ToArray());
+        var node = NbtReader.ReadRootNode(ref reader);
+
+        Assert.Equal(0, reader.Remaining);
+        Assert.Equal(-42, Assert.IsType<NbtInt>(node).Value);
+    }
+
+    [Fact]
+    public void RootNodeEndRejected()
+    {
+        bool caught = false;
+        try
+        {
+            var reader = new PacketReader(new byte[] { 0x00 });
+            NbtReader.ReadRootNode(ref reader);
+        }
+        catch (InvalidDataException)
+        {
+            caught = true;
+        }
+        Assert.True(caught);
+    }
+
+    [Fact]
+    public void RootNodeTruncatedStringThrows()
+    {
+        bool caught = false;
+        try
+        {
+            // String root declaring 5 bytes but only 2 present.
+            var reader = new PacketReader(new byte[] { 0x08, 0x00, 0x05, (byte)'h', (byte)'i' });
+            NbtReader.ReadRootNode(ref reader);
+        }
+        catch (InvalidDataException)
+        {
+            caught = true;
+        }
+        Assert.True(caught);
+    }
+
+    [Fact]
+    public void RootNodeUnknownTypeThrows()
+    {
+        bool caught = false;
+        try
+        {
+            var reader = new PacketReader(new byte[] { 0x0D });
+            NbtReader.ReadRootNode(ref reader);
+        }
+        catch (InvalidDataException)
+        {
+            caught = true;
+        }
+        Assert.True(caught);
+    }
 }
