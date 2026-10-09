@@ -14,7 +14,7 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
         int maxPlayers = 20;
         string description = "A VoXelSharp Server";
 
-        var registry = PacketRegistry.CreateM2();
+        var registry = PacketRegistry.CreateDefault();
         var statusProvider = new ServerStatusJsonProvider(new ServerStatusData(description, maxPlayers, 0));
         return new MinecraftServer(registry, statusProvider, logger, port);
     }

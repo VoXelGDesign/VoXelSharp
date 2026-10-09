@@ -8,7 +8,7 @@ public class PacketRegistryTests
     [Fact]
     public void DispatchIsKeyedByStateDirectionAndPacketId()
     {
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         IPacketCodec codec = registry.Get(ConnectionState.Handshaking, PacketDirection.Serverbound, 0);
         Assert.IsType<HandshakeCodec>(codec);
@@ -36,7 +36,7 @@ public class PacketRegistryTests
     [Fact]
     public void UnknownPacketIdThrowsInvalidData()
     {
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         // No serverbound ID 2 exists in Status for this registry.
         Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Status, PacketDirection.Serverbound, 2));
@@ -45,7 +45,7 @@ public class PacketRegistryTests
     [Fact]
     public void WrongStateForPacketIdThrowsInvalidData()
     {
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         // ID 0 exists in Handshaking/Serverbound and Status/Serverbound, but not in Play.
         Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Play, PacketDirection.Serverbound, 0));
@@ -54,7 +54,7 @@ public class PacketRegistryTests
     [Fact]
     public void WrongDirectionForPacketIdThrowsInvalidData()
     {
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         // ID 0 in Handshaking only exists serverbound.
         Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Handshaking, PacketDirection.Clientbound, 0));
@@ -63,7 +63,7 @@ public class PacketRegistryTests
     [Fact]
     public void TryGetReturnsFalseForUnknownIdentity()
     {
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         Assert.False(registry.TryGet(ConnectionState.Play, PacketDirection.Serverbound, 0, out _));
         Assert.False(registry.TryGet(ConnectionState.Handshaking, PacketDirection.Clientbound, 0, out _));
@@ -76,7 +76,7 @@ public class PacketRegistryTests
         using var writer = new PacketWriterScope();
         HandshakeCodec.Instance.Encode(new HandshakePacket(777, "x", 25565, HandshakeIntent.Status), writer.Writer);
 
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         Assert.Throws<InvalidDataException>(() => registry.Decode(ConnectionState.Handshaking, PacketDirection.Clientbound, writer.Bytes));
     }
@@ -88,7 +88,7 @@ public class PacketRegistryTests
         using var writer = new PacketWriterScope();
         HandshakeCodec.Instance.Encode(new HandshakePacket(777, "x", 25565, HandshakeIntent.Status), writer.Writer);
 
-        var registry = CreateM2Registry();
+        var registry = CreateDefaultRegistry();
 
         Assert.Throws<InvalidDataException>(() => registry.Decode(ConnectionState.Status, PacketDirection.Serverbound, writer.Bytes));
     }
@@ -109,7 +109,7 @@ public class PacketRegistryTests
         Assert.Throws<InvalidDataException>(() => registry.Get(ConnectionState.Handshaking, PacketDirection.Serverbound, 0));
     }
 
-    private static PacketRegistry CreateM2Registry()
+    private static PacketRegistry CreateDefaultRegistry()
     {
         var registry = new PacketRegistry();
         registry.Register(HandshakeCodec.Instance);
@@ -117,6 +117,10 @@ public class PacketRegistryTests
         registry.Register(StatusResponseCodec.Instance);
         registry.Register(PingRequestCodec.Instance);
         registry.Register(PongResponseCodec.Instance);
+        registry.Register(LoginAcknowledgedCodec.Instance);
+        registry.Register(DisconnectLoginCodec.Instance);
+        registry.Register(LoginStartCodec.Instance);
+        registry.Register(LoginSuccessCodec.Instance);
         return registry;
     }
 }

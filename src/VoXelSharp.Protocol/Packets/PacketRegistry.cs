@@ -13,9 +13,10 @@ public sealed class PacketRegistry
 
     /// <summary>
     /// Creates a registry with the currently implemented packets registered:
-    /// Handshaking (Handshake) and Status (Request/Response, Ping/Pong).
+    /// Handshaking (Handshake), Status (Request/Response, Ping/Pong), and
+    /// Login (Start, Success, Acknowledged, Disconnect).
     /// </summary>
-    public static PacketRegistry CreateM2()
+    public static PacketRegistry CreateDefault()
     {
         var registry = new PacketRegistry();
         registry.Register(HandshakeCodec.Instance);
@@ -23,6 +24,10 @@ public sealed class PacketRegistry
         registry.Register(StatusResponseCodec.Instance);
         registry.Register(PingRequestCodec.Instance);
         registry.Register(PongResponseCodec.Instance);
+        registry.Register(LoginAcknowledgedCodec.Instance);
+        registry.Register(DisconnectLoginCodec.Instance);
+        registry.Register(LoginStartCodec.Instance);
+        registry.Register(LoginSuccessCodec.Instance);
         return registry;
     }
 

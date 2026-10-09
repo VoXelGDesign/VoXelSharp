@@ -20,7 +20,7 @@ public class ConnectionSessionTests
         await harness.ClientSendAsync(StatusRequestCodec.Instance, new StatusRequestPacket());
 
         byte[] payload = await harness.ReadServerFrameAsync();
-        var packet = Assert.IsType<StatusResponsePacket>(PacketRegistry.CreateM2().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
+        var packet = Assert.IsType<StatusResponsePacket>(PacketRegistry.CreateDefault().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
 
         Assert.Contains("\"protocol\":777", packet.Json);
         Assert.Contains("\"name\":\"26.3\"", packet.Json);
@@ -37,7 +37,7 @@ public class ConnectionSessionTests
         await harness.ClientSendAsync(PingRequestCodec.Instance, new PingRequestPacket(timestamp));
 
         byte[] payload = await harness.ReadServerFrameAsync();
-        var packet = Assert.IsType<PongResponsePacket>(PacketRegistry.CreateM2().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
+        var packet = Assert.IsType<PongResponsePacket>(PacketRegistry.CreateDefault().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
         Assert.Equal(timestamp, packet.Timestamp);
 
         // The wiki flow closes the connection after Pong.
@@ -45,13 +45,42 @@ public class ConnectionSessionTests
     }
 
     [Fact]
-    public async Task LoginIntentClosesWithoutResponse()
+    public async Task LoginFlowReachesConfiguration()
+    {
+        const string playerName = "Player1";
+        const long uuidMsb = 0x0123456789ABCDEF;
+        const long uuidLsb = -2742139916407285296L;
+
+        await using var harness = new SessionHarness();
+
+        // Client: Handshake (Login) then Login Start.
+        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Login));
+        await harness.ClientSendAsync(LoginStartCodec.Instance, new LoginStartPacket(playerName, uuidMsb, uuidLsb));
+
+        // Server responds with Login Success echoing the player name and UUID.
+        byte[] successPayload = await harness.ReadServerFrameAsync();
+        var success = Assert.IsType<LoginSuccessPacket>(
+            PacketRegistry.CreateDefault().Decode(ConnectionState.Login, PacketDirection.Clientbound, successPayload));
+        Assert.Equal(playerName, success.Profile.Username);
+        Assert.Equal(uuidMsb, success.Profile.PlayerUuidMsb);
+        Assert.Equal(uuidLsb, success.Profile.PlayerUuidLsb);
+
+        // Client confirms with Login Acknowledged; session stays open in Configuration.
+        await harness.ClientSendAsync(LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket());
+
+        // The session reached Configuration and remains open awaiting more input.
+        await harness.AssertSessionOpenAsync();
+        await harness.AssertNoMoreFramesAsync();
+    }
+
+    [Fact]
+    public async Task TransferIntentClosesWithoutResponse()
     {
         await using var harness = new SessionHarness();
 
-        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Login));
+        await harness.ClientSendAsync(HandshakeCodec.Instance, new HandshakePacket(777, "x", 25565, HandshakeIntent.Transfer));
 
-        // Session should finish on its own (login flow not implemented in M2).
+        // Transfer flow is not implemented; the session should finish on its own.
         await harness.WaitForSessionAsync();
         await harness.AssertNoMoreFramesAsync();
     }
@@ -93,7 +122,7 @@ public class ConnectionSessionTests
         await harness.ClientSendAsync(StatusRequestCodec.Instance, new StatusRequestPacket());
 
         byte[] payload = await harness.ReadServerFrameAsync();
-        var packet = Assert.IsType<StatusResponsePacket>(PacketRegistry.CreateM2().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
+        var packet = Assert.IsType<StatusResponsePacket>(PacketRegistry.CreateDefault().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
         Assert.Contains("\"protocol\":777", packet.Json);
     }
 
@@ -126,7 +155,7 @@ public class ConnectionSessionTests
             var serverTransport = new DuplexPipe(_clientToServer.Reader, _serverToClient.Writer);
             var session = new ConnectionSession(
                 serverTransport,
-                PacketRegistry.CreateM2(),
+                PacketRegistry.CreateDefault(),
                 new ConnectionStateMachine(),
                 new ServerStatusJsonProvider(new ServerStatusData("A Minecraft Server", 20, 0)),
                 NullLogger<ConnectionSession>.Instance);
@@ -176,6 +205,13 @@ public class ConnectionSessionTests
         }
 
         public Task WaitForSessionAsync() => _sessionTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        public async Task AssertSessionOpenAsync()
+        {
+            // Give the session a moment; it must NOT have completed on its own.
+            await Task.Delay(50);
+            Assert.False(_sessionTask.IsCompleted, "Session closed unexpectedly before Configuration was reached.");
+        }
 
         public async Task AssertNoMoreFramesAsync()
         {

@@ -20,7 +20,7 @@ public class MinecraftServerIntegrationTests
     {
         var statusProvider = new ServerStatusJsonProvider(
             new ServerStatusData("A Minecraft Server", 20, 0));
-        var registry = PacketRegistry.CreateM2();
+        var registry = PacketRegistry.CreateDefault();
         var server = new MinecraftServer(registry, statusProvider, NullLogger<MinecraftServer>.Instance, 0);
         CancellationToken ct = TestContext.Current.CancellationToken;
 
@@ -46,7 +46,7 @@ public class MinecraftServerIntegrationTests
             byte[] payload = await ReadFrameAsync(stream, ct);
 
             var response = Assert.IsType<StatusResponsePacket>(
-                PacketRegistry.CreateM2().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
+                PacketRegistry.CreateDefault().Decode(ConnectionState.Status, PacketDirection.Clientbound, payload));
             Assert.Contains("\"protocol\":777", response.Json);
             Assert.Contains("\"name\":\"26.3\"", response.Json);
             Assert.Contains("\"description\":{\"text\":\"A Minecraft Server\"}", response.Json);

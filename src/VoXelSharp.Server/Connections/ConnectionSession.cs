@@ -162,6 +162,13 @@ public sealed class ConnectionSession
                 // The wiki Server List Ping flow: server sends Pong and then closes the connection.
                 return true;
 
+            case LoginStartPacket loginStart:
+                await HandleLoginStartAsync(loginStart, cancellationToken);
+                return false;
+
+            case LoginAcknowledgedPacket:
+                return HandleLoginAcknowledged();
+
             default:
                 throw new InvalidDataException(
                     $"Packet '{packet.GetType().Name}' is not valid in state {_state.State} ({PacketDirection.Serverbound}).");
@@ -170,9 +177,21 @@ public sealed class ConnectionSession
 
     private bool HandleHandshake(HandshakePacket handshake)
     {
-        if (handshake.Intent == HandshakeIntent.Login || handshake.Intent == HandshakeIntent.Transfer)
+        if (handshake.Intent == HandshakeIntent.Login)
         {
-            // Login/transfer flows are implemented in later milestones (M3+).
+            // Begin the login flow (Login Start -> Login Success -> Login Acknowledged -> Configuration).
+            if (!_state.TryTransitionTo(ConnectionState.Login))
+            {
+                throw new InvalidDataException(
+                    $"Handshake intent {handshake.Intent} is not a valid transition from state {_state.State}.");
+            }
+
+            return false;
+        }
+
+        if (handshake.Intent == HandshakeIntent.Transfer)
+        {
+            // The transfer flow is implemented in a later milestone.
             _unsupportedFlow(_logger, handshake.Intent, null);
             return true;
         }
@@ -181,6 +200,43 @@ public sealed class ConnectionSession
         {
             throw new InvalidDataException(
                 $"Handshake intent {handshake.Intent} is not a valid transition from state {_state.State}.");
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Handles a Login Start by sending the client a Login Success. The player's profile
+    /// (name and UUID) is echoed from the Login Start packet. No authentication or encryption
+    /// is performed in this milestone, so the login is accepted as-is and the session remains
+    /// in the Login state awaiting Login Acknowledged.
+    /// </summary>
+    private async Task HandleLoginStartAsync(LoginStartPacket loginStart, CancellationToken cancellationToken)
+    {
+        var profile = new GameProfile(
+            loginStart.PlayerUuidMsb,
+            loginStart.PlayerUuidLsb,
+            loginStart.Name,
+            [],
+            null);
+
+        // Session ID is not yet meaningful here; echo the player's UUID.
+        await SendAsync(
+            LoginSuccessCodec.Instance,
+            new LoginSuccessPacket(profile, loginStart.PlayerUuidMsb, loginStart.PlayerUuidLsb),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Handles Login Acknowledged, the client's confirmation after Login Success, by moving
+    /// the session to the Configuration state. Configuration packets are sent in a later milestone.
+    /// </summary>
+    private bool HandleLoginAcknowledged()
+    {
+        if (!_state.TryTransitionTo(ConnectionState.Configuration))
+        {
+            throw new InvalidDataException(
+                $"Login Acknowledged is not a valid transition from state {_state.State}.");
         }
 
         return false;
