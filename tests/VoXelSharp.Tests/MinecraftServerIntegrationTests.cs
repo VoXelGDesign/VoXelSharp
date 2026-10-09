@@ -241,6 +241,7 @@ public class MinecraftServerIntegrationTests
         var expected = new Queue<Type>(new[]
         {
             typeof(LoginPlayPacket),
+            typeof(PluginMessagePacket), // server brand
             typeof(PlayerInfoUpdatePacket),
             typeof(SetCenterChunkPacket),
             typeof(SetDefaultSpawnPositionPacket),

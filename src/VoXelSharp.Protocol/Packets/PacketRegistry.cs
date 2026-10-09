@@ -60,6 +60,9 @@ public sealed class PacketRegistry
         registry.Register(SystemChatCodec.Instance);
         registry.Register(PlayerInfoUpdateCodec.Instance);
         registry.Register(PlayerInfoRemoveCodec.Instance);
+        registry.Register(ServerConfigurationPluginMessageCodec.Instance);
+        registry.Register(PlayServerboundPluginMessageCodec.Instance);
+        registry.Register(PlayClientboundPluginMessageCodec.Instance);
         return registry;
     }
 

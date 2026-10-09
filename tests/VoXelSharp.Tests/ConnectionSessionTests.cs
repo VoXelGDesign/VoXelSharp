@@ -239,13 +239,19 @@ public class ConnectionSessionTests
         await harness.ClientSendAsync(AcknowledgeFinishConfigurationCodec.Instance, new AcknowledgeFinishConfigurationPacket());
 
         // The Play join sequence in order:
-        // Login (play), Player Info Update, Set Center Chunk, Set Default Spawn Position,
-        // Set Simulation Distance, Set Held Item, Chunk Batch Start.
+        // Login (play), then the server brand announcement, then Player Info Update,
+        // Set Center Chunk, Set Default Spawn Position, Set Simulation Distance,
+        // Set Held Item, Chunk Batch Start.
         var loginPlay = Assert.IsType<LoginPlayPacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.Equal("minecraft:overworld", loginPlay.DimensionName);
         Assert.True(loginPlay.IsFlat);
         Assert.Equal(4, loginPlay.ViewDistance);
+
+        var brand = Assert.IsType<PluginMessagePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(PluginMessagePacket.BrandChannel, brand.Channel);
+        Assert.Equal("VoXelSharp", ReadBrandString(brand.Data));
 
         var playerInfo = Assert.IsType<PlayerInfoUpdatePacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
@@ -319,6 +325,25 @@ public class ConnectionSessionTests
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.True(loginPlay.IsFlat);
 
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task ClientBrandDoesNotDisconnectSession()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // The vanilla client sends its brand right after login; the session must accept it.
+        var brandWriter = new PacketWriter();
+        brandWriter.WriteString("vanilla", PluginMessagePacket.MaxChannelLength);
+        await harness.ClientSendAsync(
+            PlayServerboundPluginMessageCodec.Instance,
+            new PluginMessagePacket(PluginMessagePacket.BrandChannel, brandWriter.ToArray()));
+
+        await harness.AssertStateAsync(ConnectionState.Play);
         await harness.AssertSessionOpenAsync();
     }
 
@@ -417,6 +442,8 @@ public class ConnectionSessionTests
 
         Assert.IsType<LoginPlayPacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<PluginMessagePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync())); // brand
         Assert.IsType<PlayerInfoUpdatePacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.IsType<SetCenterChunkPacket>(
@@ -443,6 +470,12 @@ public class ConnectionSessionTests
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.IsType<SynchronizePlayerPositionPacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+    }
+
+    private static string ReadBrandString(byte[] data)
+    {
+        var reader = new PacketReader(data);
+        return reader.ReadString(PluginMessagePacket.MaxChannelLength);
     }
 
     private static async Task<byte[]> AwaitKeepAliveFrameAsync(SessionHarness harness, PacketRegistry registry)

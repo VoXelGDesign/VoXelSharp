@@ -301,6 +301,12 @@ public sealed class ConnectionSession : IDisposable
                 // Response to a future clientbound Ping; accepted and ignored for now.
                 return false;
 
+            case PluginMessagePacket pluginMessage:
+                // Minecraft itself uses plugin channels (e.g. the client announces its brand on
+                // minecraft:brand after login). No channel is used by session logic yet, so all
+                // serverbound plugin messages are accepted and ignored (never a disconnect).
+                return false;
+
             default:
                 throw new InvalidDataException(
                     $"Packet '{packet.GetType().Name}' is not valid in state {_state.State} ({PacketDirection.Serverbound}).");
@@ -438,6 +444,13 @@ public sealed class ConnectionSession : IDisposable
         // Login (play) is always the first packet in the Play state.
         await SendAsync(LoginPlayCodec.Instance, BuildLoginPlay(), cancellationToken);
 
+        // The Notchian server announces its brand right after Login (play); the client
+        // tolerates its absence but sends its own brand back via a serverbound plugin message.
+        await SendAsync(
+            PlayClientboundPluginMessageCodec.Instance,
+            BuildBrandMessage(),
+            cancellationToken);
+
         // Player Info Add Player so the client shows the player in the tab list.
         await SendPlayerInfoAddAsync(cancellationToken);
 
@@ -505,6 +518,14 @@ public sealed class ConnectionSession : IDisposable
         // Start the periodic keep-alive loop for the lifetime of this Play session.
         _playCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _keepAliveTask = Task.Run(() => KeepAliveLoopAsync(_playCts.Token), _playCts.Token);
+    }
+
+    private static PluginMessagePacket BuildBrandMessage()
+    {
+        // The minecraft:brand channel Data is a String (32767) carrying the implementation name.
+        var brandWriter = new PacketWriter();
+        brandWriter.WriteString("VoXelSharp", PluginMessagePacket.MaxChannelLength);
+        return new PluginMessagePacket(PluginMessagePacket.BrandChannel, brandWriter.ToArray());
     }
 
     private LoginPlayPacket BuildLoginPlay()
