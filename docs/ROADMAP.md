@@ -274,6 +274,41 @@ A test plugin can load and receive an event.
 
 ---
 
+# M8 — Architecture Hardening (audit findings)
+
+Findings from the architecture/quality audit (docs/TROUBLESHOOTING.md, this point
+added 2026-10-11). Work through the items before or alongside M5/M6 as they unblock
+quality work; each is a small logical task.
+
+## Tasks
+
+- Create a `Player` object and per-session event sink (join → play-ready →
+  disconnected) so plugin events have something to attach to (currently the session
+  owns `_playerProfile` and teleport/keep-alive state privately).
+- Wire DI in `Program.cs`/`Worker`: register `PacketRegistry`,
+  `IStatusJsonProvider`, `IConfigurationDataProvider`, `IPlayDataProvider`; stop
+  `new`-ing providers inside `MinecraftServer`/`Worker`.
+- Add an event dispatcher abstraction (server-level, referenced by PluginApi in M7);
+  keep it a contract, not an implementation.
+- Add the server tick loop (required by M5 and the event source for plugins).
+- Data-provider factory helpers (done: `RegistryDataPacket.Create`,
+  `RegistryTag.With`/`Empty`, `TaggedRegistry.WithEmptyTags`) — keep using them for
+  new registries; consider *generating* registry/tag data from
+  `docs/data/registries.json` instead of hand-maintaining it.
+- Adopt the packet-test helpers (`Encode`, `DecodeAs`, `AssertInvalidData`) across
+  the remaining repetitive test files (ConnectionSessionTests, LoginPacketTests,
+  PlayerInfoPacketTests, PlayChunkPacketTests, etc.).
+- Delete dead placeholders (`Class1` in Protocol/PluginApi, `UnitTest1.cs`) — done.
+- Improve class/member documentation and naming for consistency (player vs entity,
+  provider naming) as new work touches those areas; no broad rename churn.
+
+## Completion
+
+The codebase stays buildable and green while the shared seams (player, DI, events,
+tick loop) that both M5–M7 depend on are introduced incrementally.
+
+---
+
 # Working Rules
 
 Each implementation task should be small.
@@ -297,4 +332,4 @@ docs/PROTOCOL.md docs/data/
 
 # Current Critical Path
 
-Generate official 26.3 protocol data ↓ M0 Foundation ↓ M1 Wire Layer ↓ M2 Handshake/Status ↓ M3 Login/Configuration ↓ M4 Play/World ↓ M5 Basic Gameplay ↓ M6 Persistence/Docker ↓ M7 Plugins
+Generate official 26.3 protocol data ↓ M0 Foundation ↓ M1 Wire Layer ↓ M2 Handshake/Status ↓ M3 Login/Configuration ↓ M4 Play/World ↓ M5 Basic Gameplay ↓ M6 Persistence/Docker ↓ M7 Plugins ↓ M8 Architecture Hardening (audit findings; incremental, alongside M5–M7)
