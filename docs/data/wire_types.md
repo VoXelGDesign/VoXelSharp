@@ -127,6 +127,48 @@ _Source: 26.3 client bytecode (`net.minecraft.network.codec.ByteBufCodecs.BIT_SE
 `java.util.BitSet.valueOf`/`toByteArray`), verified 2026-10-09. An earlier wiki capture described
 the long-count form; the 26.3 client uses the byte-array form.
 
+## Hashed Stack (container_click slots)
+
+Used by container_click ("Array of changed slots" values and "Carried item") and anywhere a stack is
+sent without NBT component payloads. Facts verified from the 26.3 client bytecode:
+`net.minecraft.network.HashedStack` / `HashedPatchMap` and `net.minecraft.world.inventory.ContainerInput`
+(CFR 0.152 decompile, 2026-10-11).
+
+`Hashed Stack` is an **optional** payload (`ByteBufCodecs.optional(ActualItem.STREAM_CODEC)`):
+
+- Presence: Boolean — `0x01` if an item is present, `0x00` for an empty stack (nothing more follows).
+
+When present (`ActualItem`):
+
+- `Item`: VarInt — registry ID in the `minecraft:item` registry.
+- `Count`: VarInt.
+- `Components`: Hashed Patch Map (below).
+
+`Hashed Patch Map` (`HashedPatchMap`):
+
+- `Added Components`: Prefixed Array (max 256) of:
+  - `Type`: VarInt — registry ID in `minecraft:data_component_type`.
+  - `Hash`: Int — hash of the component value (server compares, never sent raw NBT).
+- `Removed Components`: Prefixed Array (max 256) of VarInt data-component-type registry IDs.
+
+### Container Input (container_click "Mode")
+
+`Mode` is a VarInt enum (`ContainerInput`, `ByteBufCodecs.idMapper`, unknown IDs clamp to 0):
+
+| ID | Name        |
+|----|-------------|
+| 0  | PICKUP      |
+| 1  | QUICK_MOVE  |
+| 2  | SWAP        |
+| 3  | CLONE       |
+| 4  | THROW       |
+| 5  | QUICK_CRAFT |
+| 6  | PICKUP_ALL  |
+
+The full `container_click` wire order (matching `ServerboundContainerClickPacket.STREAM_CODEC`):
+Container ID VarInt, State ID VarInt, Slot Short, Button Byte, Mode VarInt (ContainerInput),
+Changed Slots map(Short → Hashed Stack, max 128), Carried Item Hashed Stack.
+
 ## Game Profile
 
 A player profile as sent in Login Success, Resolvable Profile "Complete", and Player Info

@@ -216,16 +216,58 @@ version.  Protocol version validation is a login-state concern (M3+).
 
 ---
 
-# Missing protocol data blocks
+# Protocol data status
 
-Current status:
+Current status (26.3 / protocol 777):
 
 - `docs/data/packets.json` — present, covers all states
-- `docs/data/registries.json` — **missing** (blocks M3 Login + Configuration)
-- `docs/data/blocks.json` — **missing** (blocks M4 gameplay)
-- `docs/data/_raw/_server_list_ping.raw.wikitext.txt` — present (gitignored provenance)
+- `docs/data/registries.json` — present (data-pack-compiled from the 26.3 server.jar)
+- `docs/data/blocks.json` — present (compiled from the official 26.3 data generator)
+- `docs/data/wire_types.md` — present (wiki captures + 26.3 client-bytecode verifications)
+- `docs/data/chunk_format.md` — present (wiki + 26.3 client verification)
+- `docs/data/_raw/` and `docs/data/source/` — gitignored provenance / generators
 
-Before implementing any packet codec for a state that isn't already
-documented in `docs/PROTOCOL.md` with VERIFIED status, the data files
-must be generated.  Vanilla data generators or Burger-based tooling are
-the planned approach.
+Before implementing any packet codec for a state that isn't already documented in
+`docs/PROTOCOL.md` with VERIFIED status, the data must be verifiable from the files
+above or from the official 26.3 client/server bytecode (see the decompilation
+section below). Never guess; state `UNVERIFIED: <fact>` and stop that portion.
+
+---
+
+# Decompiling the 26.3 client as ground truth
+
+The wiki and derived data are occasionally stale for 26.3. In those cases the
+**official 26.3 client jar is the ground truth** and has been used to resolve:
+
+- `ByteBufCodecs.BIT_SET` — VarInt **byte** length + `java.util.BitSet`
+  little-endian bytes (not the long-count form an earlier wiki capture described).
+- `ByteBufCodecs.LONG_ARRAY` — VarInt length in longs + big-endian longs
+  (heightmap `data` field).
+- Heightmaps — the 26.3 client exposes exactly three heightmaps
+  (WORLD_SURFACE 1, MOTION_BLOCKING 4, MOTION_BLOCKING_NO_LEAVES 5), each a
+  LONG_ARRAY packed per the Data Array format.
+- `game_event` `LEVEL_CHUNKS_LOAD_START` (event 13) — the client leaves
+  "Loading terrain…" only after this event is received.
+- container_click — 26.3 uses a **Hashed Stack** / HashedPatchMap payload (see
+  `docs/data/wire_types.md`), not the older Slot/ItemStack forms.
+- Packets that do NOT exist (e.g. there is no serverbound
+  `acknowledge_block_changes` in 26.3 — that content-style sequence is covered
+  by client `Sequence` fields) — checked against the client packet tables.
+
+## How to decompile (recap)
+
+1. The client jar lives at `%APPDATA%\.minecraft\versions\26.3\26.3.jar`.
+2. Use CFR 0.152 (a copy is kept under the opencode temp dir; see the agent
+   `decompiler` definition for the exact command). Java must be located via a
+   recursive search under `C:\Program Files\Eclipse Adoptium` because the JDK
+   directory name is environment-specific.
+3. Output goes to `vanilla/decompiled-26.3/` (gitignored; keep class files
+   organized under `net/...` as CFR emits them).
+4. Relevant classes: `ByteBufCodecs`, `FriendlyByteBuf`, `GamePacketTypes`,
+   the `Serverbound*Packet` / `Clientbound*Packet` records (their `STREAM_CODEC`
+   is the authoritative field order), `LevelChunkSection`, `PalettedContainer`,
+   the palette classes, `HashedStack`, `HashedPatchMap`, `ContainerInput`,
+   `Heightmap`, `LevelLoadTracker`.
+5. When wiki facts disagree with the decompiled bytecode, the bytecode wins;
+   update the wiki-derived docs and note the correction. Document discoveries
+   in `docs/data/*.md` with the `_Source:` provenance convention used there.

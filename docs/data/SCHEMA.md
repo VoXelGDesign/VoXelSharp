@@ -5,9 +5,12 @@ Authoritative protocol data for Minecraft **26.3 / protocol 777**.
 These files are the single source of wire facts for packet and registry
 implementation. They are generated from the Minecraft Wiki Java Edition
 "Java Edition protocol" documentation (CC BY-SA 3.0) by
-`source/_generate_packets.py`. The large raw source pages fetched locally to
-regenerate this data are **not committed** — see `_raw/` (gitignored), and
-`.gitignore` for the excluded paths.
+`source/_generate_packets.py`. Facts that the wiki data is stale or missing for
+are verified against the official 26.3 client bytecode (decompiled under
+`vanilla/decompiled-26.3/`) and marked with a `_Source:` line — see
+`docs/TROUBLESHOOTING.md` "Decompiling the 26.3 client as ground truth". The large
+raw source pages fetched locally to regenerate this data are **not committed** —
+see `_raw/` (gitignored), and `.gitignore` for the excluded paths.
 
 ## Metadata fields (appear on every generated file)
 
@@ -20,8 +23,10 @@ regenerate this data are **not committed** — see `_raw/` (gitignored), and
 Files:
 
 - `packets.json` — packet index + field layout (schema below).
-- `registries.json` — synchronized registry contents (planned).
-- `blocks.json` — block state IDs (planned).
+- `registries.json` — synchronized registry contents (present; data-pack-compiled from the 26.3 server.jar).
+- `blocks.json` — block state IDs (present; compiled from the official 26.3 data generator).
+- `wire_types.md` — composite wire types (wiki captures + 26.3 client-bytecode verifications).
+- `chunk_format.md` — chunk wire format for protocol 777 (wiki + 26.3 client verification).
 
 ---
 

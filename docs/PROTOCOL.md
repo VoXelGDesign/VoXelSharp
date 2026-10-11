@@ -78,10 +78,12 @@ docs/data/packets.json
 
 Status by area:
 
-Packet IDs (handshaking, status): VERIFIED Packet fields (handshaking, status): VERIFIED Packet IDs and fields (login, configuration, play): BLOCKED Registry IDs: BLOCKED Block state IDs: BLOCKED Chunk wire format: BLOCKED
+Packet IDs (handshaking, status, login, configuration, play): VERIFIED Packet fields (handshaking, status, login, configuration): VERIFIED Packet IDs and fields (play): PRESENT (docs/data/packets.json) Registry IDs: PRESENT (docs/data/registries.json) Update Tags: PRESENT (docs/data/registries.json) Block state IDs: PRESENT (docs/data/blocks.json) Chunk wire format: PRESENT (docs/data/chunk_format.md) Composite wire types: PRESENT (docs/data/wire_types.md)
 
 
 Do not implement packet codecs using guessed IDs.
+
+Protocol facts that the wiki data is stale or missing for must be verified against the official 26.3 client bytecode (decompiled under `vanilla/decompiled-26.3/`, see `docs/TROUBLESHOOTING.md` "Decompiling the 26.3 client as ground truth").
 
 ---
 
@@ -271,6 +273,9 @@ Do not implement the entire Play protocol at once.
 Initial targets include:
 
 Join Game Set Center Chunk Chunk Batch Start Chunk Data Chunk Batch Finished Player Position/Rotation Set Render Distance Keep Alive
+
+
+After the initial chunks are sent, the server must send Game Event (clientbound, ID 39) with Event = 13 (`LEVEL_CHUNKS_LOAD_START`); the client stays on "Loading terrain…" until it receives `LEVEL_CHUNKS_LOAD_START` (event 0 `NO_RESPAWN_BLOCK_AVAILABLE` is not required). Source: 26.3 client `ClientboundGameEventPacket` + `LevelLoadTracker` (CFR 0.152 decompile, 2026-10-11); server behavior in `ConnectionSession`.join.
 
 
 Exact packet IDs and field layouts are present in:
