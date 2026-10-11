@@ -6,13 +6,36 @@ namespace VoXelSharp.Protocol.Packets;
 /// A single tag in an <see cref="UpdateTagsPacket"/>.
 /// Wire format per docs/data/wire_types.md: Tag Name (Identifier), Entries (Prefixed Array of VarInt).
 /// </summary>
-public sealed record RegistryTag(string Name, int[] EntryIds);
+public sealed record RegistryTag(string Name, int[] EntryIds)
+{
+    /// <summary>Creates a tag with no entries (the tag exists so references resolve).</summary>
+    public static RegistryTag Empty(string name) => new(name, []);
+
+    /// <summary>Creates a tag with the given entry IDs.</summary>
+    public static RegistryTag With(string name, params int[] entryIds) => new(name, entryIds);
+}
 
 /// <summary>
 /// A registry with its tags in an <see cref="UpdateTagsPacket"/>.
 /// Wire format per docs/data/packets.json: Registry (Identifier), Tags (Prefixed Array of Tag).
 /// </summary>
-public sealed record TaggedRegistry(string Registry, RegistryTag[] Tags);
+public sealed record TaggedRegistry(string Registry, RegistryTag[] Tags)
+{
+    /// <summary>
+    /// Creates a tagged registry whose tags all have empty entry lists. Used for tags that must
+    /// exist so references resolve but whose entries come from the client's pack.
+    /// </summary>
+    public static TaggedRegistry WithEmptyTags(string registry, params string[] tagNames)
+    {
+        var tags = new RegistryTag[tagNames.Length];
+        for (int i = 0; i < tagNames.Length; i++)
+        {
+            tags[i] = RegistryTag.Empty(tagNames[i]);
+        }
+
+        return new TaggedRegistry(registry, tags);
+    }
+}
 
 /// <summary>
 /// Update Tags (configuration/clientbound, packet ID 14, official name "update_tags").

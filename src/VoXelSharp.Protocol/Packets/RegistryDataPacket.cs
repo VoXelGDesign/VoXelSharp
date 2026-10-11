@@ -26,6 +26,26 @@ public sealed class RegistryDataPacket : IPacket
         Entries = entries;
     }
 
+    /// <summary>
+    /// Creates a Registry Data packet whose entries carry no inline NBT data
+    /// (<see langword="null"/>), i.e. the client sources entry data from the advertised
+    /// known pack. This is the common server-authored form.
+    /// </summary>
+    /// <param name="registryId">Registry name, e.g. "minecraft:dimension_type".</param>
+    /// <param name="entryIds">Entry identifiers in the registry's numeric ID order (order matters).</param>
+    public static RegistryDataPacket Create(string registryId, params string[] entryIds)
+    {
+        ArgumentNullException.ThrowIfNull(entryIds);
+
+        var entries = new RegistryDataEntry[entryIds.Length];
+        for (int i = 0; i < entryIds.Length; i++)
+        {
+            entries[i] = new RegistryDataEntry(entryIds[i], null);
+        }
+
+        return new RegistryDataPacket(registryId, entries);
+    }
+
     /// <summary>Registry name, e.g. "minecraft:dimension_type".</summary>
     public string RegistryId { get; }
 
