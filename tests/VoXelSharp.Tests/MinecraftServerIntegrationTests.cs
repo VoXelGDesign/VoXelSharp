@@ -212,6 +212,120 @@ public class MinecraftServerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task M5BasicGameplayLoopOverTcp()
+    {
+        var statusProvider = new ServerStatusJsonProvider(
+            new ServerStatusData("A Minecraft Server", 20, 0));
+        var registry = PacketRegistry.CreateDefault();
+        var server = new MinecraftServer(registry, statusProvider, NullLogger<MinecraftServer>.Instance, 0);
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        server.Start();
+        int port = server.Port;
+
+        using TcpClient client = new();
+        await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, port), ct);
+
+        try
+        {
+            NetworkStream stream = client.GetStream();
+            var reader = new FrameReader(stream);
+
+            // ---- Login + Configuration into Play ----
+            await SendFrameAsync(stream, HandshakeCodec.Instance,
+                new HandshakePacket(777, "localhost", 25565, HandshakeIntent.Login), ct);
+            await SendFrameAsync(stream, LoginStartCodec.Instance,
+                new LoginStartPacket("Player1", 1, 2), ct);
+            await reader.ReadFrameAsync(ct); // Login Success
+            await SendFrameAsync(stream, LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket(), ct);
+            await reader.ReadFrameAsync(ct); // Known Packs (clientbound)
+            await SendFrameAsync(stream, ServerKnownPacksCodec.Instance, new KnownPacksPacket([]), ct);
+
+            var provider = new ServerConfigurationDataProvider();
+            for (int i = 0; i < provider.RegistryData.Count; i++)
+            {
+                await reader.ReadFrameAsync(ct); // Registry Data
+            }
+
+            await reader.ReadFrameAsync(ct); // Update Tags
+            await reader.ReadFrameAsync(ct); // Feature Flags
+            await reader.ReadFrameAsync(ct); // Finish Configuration
+            await SendFrameAsync(stream, AcknowledgeFinishConfigurationCodec.Instance,
+                new AcknowledgeFinishConfigurationPacket(), ct);
+
+            // Consume the initial join burst (done via connect confirmation) up to the teleport.
+            await ConsumePlayJoinSequenceAsync(reader, registry, ct);
+            await SendFrameAsync(stream, ConfirmTeleportationCodec.Instance,
+                new ConfirmTeleportationPacket(1, 0.5, -60.0, 0.5, 0f, 0f), ct);
+
+            // ---- Move next to the grass block at (0,-61,0) ----
+            await SendFrameAsync(stream, SetPlayerPositionCodec.Instance,
+                new SetPlayerPositionPacket(0.5, -60.0, 0.5, 0x01), ct);
+
+            // ---- Break the grass block: Block Update, Add Entity (drop), Set Entity Data, Ack ----
+            await SendFrameAsync(stream, PlayerActionCodec.Instance,
+                new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 1), ct);
+
+            var update = Assert.IsType<BlockUpdatePacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.Equal(new BlockPosition(0, -61, 0), update.Location);
+            Assert.Equal(BlockStateIds.Air, update.BlockStateId);
+
+            var drop = Assert.IsType<AddEntityPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.Equal(AddEntityPacket.EntityTypeItem, drop.EntityTypeId);
+
+            Assert.IsType<SetEntityDataPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.IsType<BlockChangedAckPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+
+            // ---- Walk onto the drop to pick it up: Take Item Entity + Set Player Inventory ----
+            await SendFrameAsync(stream, SetPlayerPositionCodec.Instance,
+                new SetPlayerPositionPacket(0.3, -60.0, 0.3, 0x01), ct);
+
+            var take = Assert.IsType<TakeItemEntityPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.Equal(drop.EntityId, take.ItemEntityId);
+            Assert.Equal(1, take.PlayerId);
+
+            var inv = Assert.IsType<SetPlayerInventoryPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.Equal(0, inv.Slot);
+            Assert.Equal(1, inv.Count);
+
+            // ---- Select the hotbar slot and place the held block ----
+            await SendFrameAsync(stream, SetCarriedItemCodec.Instance, new SetCarriedItemPacket(0), ct);
+            await SendFrameAsync(stream, UseItemOnCodec.Instance,
+                new UseItemOnPacket(0, new BlockPosition(0, -61, 0), face: 1, 0.5f, 0.5f, 0.5f, false, false, sequence: 5), ct);
+
+            var placed = Assert.IsType<BlockUpdatePacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.Equal(new BlockPosition(0, -60, 0), placed.Location);
+            Assert.Equal(BlockStateIds.GrassBlock, placed.BlockStateId);
+            Assert.IsType<SetPlayerInventoryPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct))); // consumed
+            Assert.IsType<BlockChangedAckPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+
+            // ---- Chat: server echoes it back ----
+            await SendFrameAsync(stream, ServerboundChatCodec.Instance,
+                new ServerboundChatPacket("hello", 0, 0, null, new LastSeenMessageUpdate(0, [], 0x00)), ct);
+            var chat = Assert.IsType<SystemChatPacket>(
+                registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            Assert.IsType<VoXelSharp.Protocol.Nbt.NbtString>(chat.Content);
+
+            // ---- The connection stays open through the whole loop ----
+            await Task.Delay(50, ct);
+            Assert.True(client.Connected, "Server closed the connection during the M5 gameplay loop.");
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
     /// <summary>Reads the server's Play join burst until the (0,0) center chunk is seen.</summary>
     private static async Task<ChunkDataPacket> ReadChunkDataUntilCenterAsync(
         FrameReader reader, PacketRegistry registry, CancellationToken ct)
