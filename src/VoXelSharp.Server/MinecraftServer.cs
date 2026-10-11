@@ -7,6 +7,7 @@ using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Connections;
 using VoXelSharp.Server.Play;
 using VoXelSharp.Server.Status;
+using VoXelSharp.World;
 
 namespace VoXelSharp.Server;
 
@@ -48,6 +49,7 @@ public sealed class MinecraftServer : IAsyncDisposable
     private readonly IConfigurationDataProvider _configurationData;
     private readonly ILogger _logger;
     private readonly ServerTickLoop _tickLoop = new();
+    private readonly FlatWorld _world = new();
     private Task? _acceptTask;
     private bool _started;
     private int _nextEntityId;
@@ -167,7 +169,7 @@ public sealed class MinecraftServer : IAsyncDisposable
                 var stateMachine = new ConnectionStateMachine();
                 int entityId = Interlocked.Increment(ref _nextEntityId);
                 var playData = new ServerPlayDataProvider(entityId);
-                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _logger, getTick: _tickLoop.GetCurrentTick);
+                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _world, _logger, getTick: _tickLoop.GetCurrentTick);
 
                 await session.RunAsync(_stoppingCts.Token);
             }

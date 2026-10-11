@@ -70,6 +70,26 @@ public sealed class PalettedContainer
         }
     }
 
+    /// <summary>
+    /// Returns the global block/biome state ID at entry <paramref name="index"/> (the value as sent
+    /// on the wire). For Single valued containers this is the one palette entry; for Indirect it maps
+    /// the stored palette index through <see cref="Palette"/>; for Direct it is the stored value.
+    /// </summary>
+    public int GlobalIdAt(int index)
+    {
+        if ((uint)index >= (uint)Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(index));
+        }
+
+        return BitsPerEntry switch
+        {
+            0 => Palette[0],
+            DirectBlockBitsPerEntry or DirectBiomeBitsPerEntry => _data[index],
+            _ => Palette[_data[index]],
+        };
+    }
+
     /// <summary>Writes the container body (Bits Per Entry, palette, packed data array).</summary>
     public void WriteBody(PacketWriter writer)
     {

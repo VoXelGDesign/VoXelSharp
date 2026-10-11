@@ -646,6 +646,7 @@ public class ConnectionSessionTests
                 new ServerStatusJsonProvider(new ServerStatusData("A Minecraft Server", 20, 0)),
                 new ServerConfigurationDataProvider(),
                 new ServerPlayDataProvider(playerEntityId: 1),
+                new FlatWorld(),
                 NullLogger<ConnectionSession>.Instance,
                 keepAliveInterval,
                 getTick);

@@ -57,7 +57,4 @@ public sealed class ServerPlayDataProvider : IPlayDataProvider
 
     /// <inheritdoc />
     public double SpawnZ => 0.5;
-
-    /// <inheritdoc />
-    public FlatWorldChunk GenerateChunk(int chunkX, int chunkZ) => FlatWorldGenerator.Generate(chunkX, chunkZ);
 }

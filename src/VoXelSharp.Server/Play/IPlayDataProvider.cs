@@ -39,7 +39,4 @@ public interface IPlayDataProvider
 
     /// <summary>Spawn feet Z for Synchronize Player Position.</summary>
     double SpawnZ { get; }
-
-    /// <summary>Generates the flat-world chunk column at the given coordinates.</summary>
-    FlatWorldChunk GenerateChunk(int chunkX, int chunkZ);
 }

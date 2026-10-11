@@ -52,6 +52,7 @@ public sealed class ConnectionSession : IDisposable
     private readonly IStatusJsonProvider _statusJson;
     private readonly IConfigurationDataProvider _configurationData;
     private readonly IPlayDataProvider _playData;
+    private readonly IWorldAccess _world;
     private readonly ILogger _logger;
     private readonly TimeSpan _keepAliveInterval;
     private readonly Func<long> _getTick;
@@ -84,6 +85,7 @@ public sealed class ConnectionSession : IDisposable
     /// <param name="statusJson">Provides the status JSON used for Status Response packets.</param>
     /// <param name="configurationData">Provides the data sent during the Configuration state.</param>
     /// <param name="playData">Provides the world/chunk data sent once the session reaches Play.</param>
+    /// <param name="world">The shared server world used for chunk data and block changes.</param>
     /// <param name="logger">Logger for this session.</param>
     /// <param name="keepAliveInterval">Interval between Play Keep Alive packets (default 15s).</param>
     /// <param name="getTick">Provides the current server tick for movement timestamps; defaults to a per-session counter when the server tick loop is not wired in.</param>
@@ -95,6 +97,7 @@ public sealed class ConnectionSession : IDisposable
         IStatusJsonProvider statusJson,
         IConfigurationDataProvider configurationData,
         IPlayDataProvider playData,
+        IWorldAccess world,
         ILogger logger,
         TimeSpan? keepAliveInterval = null,
         Func<long>? getTick = null)
@@ -105,6 +108,7 @@ public sealed class ConnectionSession : IDisposable
         ArgumentNullException.ThrowIfNull(statusJson);
         ArgumentNullException.ThrowIfNull(configurationData);
         ArgumentNullException.ThrowIfNull(playData);
+        ArgumentNullException.ThrowIfNull(world);
         ArgumentNullException.ThrowIfNull(logger);
 
         _transport = transport;
@@ -113,6 +117,7 @@ public sealed class ConnectionSession : IDisposable
         _statusJson = statusJson;
         _configurationData = configurationData;
         _playData = playData;
+        _world = world;
         _logger = logger;
         _keepAliveInterval = keepAliveInterval ?? TimeSpan.FromSeconds(15);
         _getTick = getTick ?? (() => Interlocked.Increment(ref _fallbackTick));
@@ -670,7 +675,7 @@ public sealed class ConnectionSession : IDisposable
 
     private async Task SendChunkDataAsync(int chunkX, int chunkZ, CancellationToken cancellationToken)
     {
-        FlatWorldChunk worldChunk = _playData.GenerateChunk(chunkX, chunkZ);
+        FlatWorldChunk worldChunk = _world.GetChunk(chunkX, chunkZ);
         byte[] data = ChunkDataIO.EncodeSections(worldChunk.Sections);
 
         var packet = new ChunkDataPacket(
