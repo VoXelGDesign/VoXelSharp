@@ -2,334 +2,174 @@
 
 ## Target
 
-Minecraft Java Edition 26.3
+Minecraft Java Edition 26.3 · Protocol 777 · Runtime .NET 10
 
-Protocol:
-
-777
-
-
-Runtime:
-
-.NET 10
-
+North star: **parity with the official vanilla `server.jar`**, plus the in-house
+plugin system already planned.
 
 ---
 
-# M0 — Foundation
+## Status snapshot
 
-## Goal
+| Milestone | Scope | Status |
+|-----------|-------|--------|
+| M0 Foundation | repo cleanliness, generated protocol data | ✅ done |
+| M1 Wire layer | VarInt/VarLong, framing, zlib wrapper, state machine | ✅ done |
+| M2 Handshake + Status | server-list ping | ✅ done |
+| M3 Login + Configuration | offline login, registry/tags/feature flags | ✅ done |
+| M4 Play + flat world | flat world, chunk streaming, block states | ✅ done |
+| M5 Basic gameplay | movement + validation, break/place, drops/pickup/inventory, chat echo | ✅ done |
+| M6 Persistence + Docker | world diff save/load, graceful shutdown, Docker | ✅ done |
+| M7 Server foundations | event seam, `Player`, DI, config, player persistence, multiplayer | ⬜ next |
+| M8 Commands & admin | command framework, ops/whitelist/ban, console, RCON | ⬜ |
+| M9 World realism | seeded terrain, threaded gen, time/weather, compression | ⬜ |
+| M10 Entities & combat | entity model, health/damage/mobs | ⬜ |
+| M11 Play long tail | containers/crafting/enchanting/redstone/fluids | ⬜ |
+| M12 Dimensions & structures | nether/end, biomes, structures, block entities | ⬜ |
+| M13 Scale & hardening | region files, backpressure, rate limiting, fuzzing | ⬜ |
+| Plugins | load, lifecycle, events, API, scheduler (parallel) | ⬜ |
 
-Make the repository clean, deterministic, and ready for implementation.
-
-## Tasks
-
-- Fix project naming references.
-- Fix Dockerfile project paths.
-- Fix Docker entrypoint.
-- Fix AGENTS.md paths.
-- Fix ROADMAP references.
-- Fix .NET 10 test runner configuration.
-- Normalize source encoding and line endings.
-- Remove stale build artifacts.
-- Pin Minecraft 26.3 / protocol 777 in PROTOCOL.md.
-- Generate protocol data from the official vanilla 26.3 server.
-- Add generated data under `docs/data/`.
-
-## Verification
-
-dotnet build -warnaserror dotnet test dotnet format --verify-no-changes
-
-
-All must pass.
+Current cumulative test count: **811 passing** (`dotnet test`).
 
 ---
 
-# M1 — Wire Layer
+## M0 — Foundation ✅
 
-## Goal
+Repo clean, deterministic, ready. Generated protocol data under `docs/data/`.
 
-Implement the version-independent network primitives.
+## M1 — Wire Layer ✅
 
-## Tasks
+VarInt, VarLong, frame length encode/decode, PipeReader/PipeWriter integration,
+zlib compression wrapper with decompression-size limit, connection-state and
+packet-direction enums, and the connection-state transition skeleton.
 
-- VarInt
-- VarLong
-- frame length encoding
-- frame decoding
-- PipeReader integration
-- PipeWriter integration
-- compression wrapper
-- decompression size limit
-- connection state enum
-- packet direction enum
-- connection state transition skeleton
+## M2 — Handshake + Status ✅
 
-## Tests
+Handshake, Status Request/Response, Ping/Pong, connection accept loop, basic
+connection session, server startup/shutdown. A vanilla client can query status.
 
-VarInt:
+## M3 — Login + Configuration ✅
 
-- zero
-- one
-- 127
-- 128
-- 255
-- 25565
-- int.MaxValue
-- -1
-- truncated input
-- overflow
+Login Start (offline), Login Success, Login Acknowledged, Configuration state,
+Known Packs, Feature Flags, Registry Data, Finish Configuration, Keep Alive, and
+the Configuration → Play transition.
 
-VarLong:
+> **Deferred to M7/M9:** online-mode authentication, connection encryption, real
+> offline UUID, and login compression negotiation.
 
-- zero
-- positive boundaries
-- long.MaxValue
-- -1
-- truncated input
-- overflow
+## M4 — Play + Flat World ✅
 
-Frame:
+Join Game, spawn, player position/rotation, Set Center Chunk, render distance,
+chunk batch start/data/finished, flat world generator, chunk sections, block
+states, minimal lighting, and the required registry data. A vanilla client can
+enter a flat world and stand on the ground.
 
-- empty payload
-- one-byte payload
-- multi-byte length
-- maximum valid frame
-- oversized frame
-- partial input
+## M5 — Basic Gameplay ✅
 
-Compression:
+Player movement with validation and teleport-back, teleport confirmation, block
+breaking/placement, creative inventory basics, held item, player information
+(tab list), system chat, and block update broadcast.
 
-- round-trip
-- threshold boundary
-- decompressed-size limit
-- malformed compressed data
+## M6 — Persistence + Docker ✅
 
-## Completion
-
-All wire-layer tests pass.
+World save/load (`WorldFileStore`, diff-based `data/world/world.bin`), graceful
+shutdown, Docker image (chiseled, non-root, read-only), Compose validation,
+volume permissions, and persistent world data. See `docs/WORLD_FORMAT.md`.
 
 ---
 
-# M2 — Handshake + Status
+## M7 — Server-side foundations *(next)*
 
-## Prerequisite
+Unblocks every later feature; do before anything stacks on a missing seam.
 
-`docs/data/packets.json` exists and protocol facts are verified.
+- Event dispatcher contract (server-level, referenced by PluginApi) — contract only.
+- Promote `Player` to a first-class object decoupled from the session (profile,
+  position, inventory, health).
+- Wire DI in `Program.cs`/`Worker`: register `PacketRegistry`, `IStatusJsonProvider`,
+  `IConfigurationDataProvider`, `IPlayDataProvider`; stop `new`-ing them inside
+  `MinecraftServer`/`Worker`.
+- `server.properties` config (MOTD, port, max players, view distance, seed),
+  replacing values hardcoded in `Worker.cs`.
+- Player data persistence (`data/players/<uuid>.bin`) mirroring the M6 world-diff pattern.
+- Shared player session registry + **chat broadcast** to all players (first visible
+  "real server" behavior).
+- Keep the server tick loop as the single authoritative tick source (already present).
 
-## Tasks
+## M8 — Commands & admin
 
-- Handshake packet
-- Status Request
-- Status Response
-- Ping
-- Pong
-- connection accept loop
-- basic connection session
-- server startup
-- server shutdown
+- Command framework: registry, argument parsing, tab-complete, permission hook.
+- Core commands: `/time`, `/gamemode`, `/give`, `/seed`, `/kill`, `/tp`, `/weather`.
+- Permissions, `ops.json`, `whitelist.json`, bans; console input loop; RCON.
 
-## Completion
+## M9 — World realism
 
-A vanilla client can query the server status.
+- `IChunkGenerator` abstraction: keep flat as default, add **seeded noise terrain**
+  (biome-lite heightmap).
+- **Threaded chunk-generation pool** off the network path.
+- Day/night cycle + weather.
+- **Compression negotiation** at login.
 
----
+## M10 — Entity framework + combat
 
-# M3 — Login + Configuration
+- Non-player entity model (id, type, position, velocity, metadata).
+- Health/hunger/damage/death/respawn; fall & fire damage; basic PvP.
+- Passive mobs + spawning/despawn; basic hostile AI (pathfinding later).
 
-## Tasks
+## M11 — Play-systems long tail
 
-- Login Start
-- offline UUID
-- Login Success
-- Login Acknowledged
-- optional compression
-- Configuration state
-- Known Packs
-- Feature Flags
-- Registry Data
-- Finish Configuration
-- Acknowledge Finish Configuration
-- Keep Alive
-- Configuration → Play transition
+- Inventory/containers/crafting/armor (NBT) → furnace → XP/enchanting/anvil.
+- Redstone, pistons, hoppers; fluids (water/lava); lighting recalculation.
+- Each is a self-contained sub-milestone; this is the bulk of vanilla surface.
 
-## Completion
+## M12 — Dimensions & structures
 
-A vanilla 26.3 client completes Login and Configuration.
+- Nether + End (dimension registry + generators), biome generation, structures
+  (villages/dungeons), block entities (chests/furnaces/signs/spawners).
 
----
+## M13 — Scale & hardening
 
-# M4 — Play + Flat World
+- Region-file (Anvil) chunk persistence (replaces/extends the diff format).
+- Outbound `Channel<T>` backpressure; per-entity time-slicing; packet rate
+  limiting/anti-cheat; fuzzing (P3); BenchmarkDotNet on measured hot paths.
 
-## Tasks
+## Plugins (parallel, built on M7's event seam)
 
-- Join Game
-- player spawn
-- player position
-- player rotation
-- Set Center Chunk
-- render distance
-- Chunk Batch Start
-- Chunk Data
-- Chunk Batch Finished
-- flat world generator
-- chunk sections
-- block states
-- minimal lighting
-- required registry data
-
-## World
-
-Initial world:
-
-Y = -64 through -61 bedrock
-
-Y = -60 through -58 dirt
-
-Y = -57 grass_block
-
-Y = -56 through 319 air
-
-
-The exact height and registry data must be confirmed from generated protocol data before implementation.
-
-## Completion
-
-A vanilla 26.3 client can enter a flat world and stand on the ground.
+Discovery → `AssemblyLoadContext` load → lifecycle → event delivery → public API
+surface → scheduler. Hot reload only after reliable load/unload.
 
 ---
 
-# M5 — Basic Gameplay
+## Gap analysis (vs vanilla `server.jar`)
 
-## Tasks
+| Domain | Missing (high level) |
+|--------|----------------------|
+| Security | online auth, encryption, skin verify, real offline UUID, IP forwarding |
+| World | seed/noise, biomes, dimensions, structures, block entities, fluids, lighting recalc, time, weather |
+| Players | state persistence, health/hunger/damage/respawn, gamemode/abilities, multiplayer list, broadcast |
+| Play | containers/crafting/enchanting/XP, redstone, combat, potions |
+| Entities | entity framework, mobs, AI/pathfinding, trading |
+| Commands | command system, `/…` set, permissions, ops/whitelist/ban, console, RCON |
+| Net/perf | compression negotiation, region files, threaded gen, backpressure, rate limiting |
+| Plugins | loading, events, API, scheduler |
 
-- player movement
-- movement validation
-- teleport confirmation
-- block breaking
-- block placement
-- creative inventory basics
-- held item
-- player information
-- system chat
-- block update broadcast
+## Low-hanging fruits (ranked)
 
-## Security
-
-Reject:
-
-- NaN coordinates
-- Infinity coordinates
-- impossible movement
-- invalid block positions
-- invalid interaction distances
-
-## Completion
-
-A player can:
-
-- move
-- break blocks
-- place blocks
-- see chat
-- remain connected
+1. `server.properties` config
+2. Compression negotiation
+3. Player data persistence
+4. Multi-player list + chat broadcast
+5. Command framework + 2–3 commands
+6. Time + weather
+7. Gamemode/abilities/flying
+8. Seeded threaded world generation
 
 ---
 
-# M6 — Persistence + Docker
+## Working rules
 
-## Tasks
-
-- world save
-- world load
-- graceful shutdown
-- Docker build
-- Docker Compose validation
-- volume permissions
-- persistent world data
-
-## Completion
-
-The server can restart without losing the world.
-
----
-
-# M7 — Plugins
-
-## Tasks
-
-- PluginApi contracts
-- plugin discovery
-- AssemblyLoadContext
-- plugin lifecycle
-- event dispatcher
-- join event
-- unload testing
-
-Hot reload is optional and should come after reliable startup loading.
-
-## Completion
-
-A test plugin can load and receive an event.
-
----
-
-# M8 — Architecture Hardening (audit findings)
-
-Findings from the architecture/quality audit (docs/TROUBLESHOOTING.md, this point
-added 2026-10-11). Work through the items before or alongside M5/M6 as they unblock
-quality work; each is a small logical task.
-
-## Tasks
-
-- Create a `Player` object and per-session event sink (join → play-ready →
-  disconnected) so plugin events have something to attach to (currently the session
-  owns `_playerProfile` and teleport/keep-alive state privately).
-- Wire DI in `Program.cs`/`Worker`: register `PacketRegistry`,
-  `IStatusJsonProvider`, `IConfigurationDataProvider`, `IPlayDataProvider`; stop
-  `new`-ing providers inside `MinecraftServer`/`Worker`.
-- Add an event dispatcher abstraction (server-level, referenced by PluginApi in M7);
-  keep it a contract, not an implementation.
-- Add the server tick loop (required by M5 and the event source for plugins).
-- Data-provider factory helpers (done: `RegistryDataPacket.Create`,
-  `RegistryTag.With`/`Empty`, `TaggedRegistry.WithEmptyTags`) — keep using them for
-  new registries; consider *generating* registry/tag data from
-  `docs/data/registries.json` instead of hand-maintaining it.
-- Adopt the packet-test helpers (`Encode`, `DecodeAs`, `AssertInvalidData`) across
-  the remaining repetitive test files (ConnectionSessionTests, LoginPacketTests,
-  PlayerInfoPacketTests, PlayChunkPacketTests, etc.).
-- Delete dead placeholders (`Class1` in Protocol/PluginApi, `UnitTest1.cs`) — done.
-- Improve class/member documentation and naming for consistency (player vs entity,
-  provider naming) as new work touches those areas; no broad rename churn.
-
-## Completion
-
-The codebase stays buildable and green while the shared seams (player, DI, events,
-tick loop) that both M5–M7 depend on are introduced incrementally.
-
----
-
-# Working Rules
-
-Each implementation task should be small.
-
-Preferred:
-
-VarInt + tests
-
-
-rather than:
-
-Implement the entire protocol
-
-
-Do not implement packets until their protocol information exists in:
-
-docs/PROTOCOL.md docs/data/
-
-
----
-
-# Current Critical Path
-
-Generate official 26.3 protocol data ↓ M0 Foundation ↓ M1 Wire Layer ↓ M2 Handshake/Status ↓ M3 Login/Configuration ↓ M4 Play/World ↓ M5 Basic Gameplay ↓ M6 Persistence/Docker ↓ M7 Plugins ↓ M8 Architecture Hardening (audit findings; incremental, alongside M5–M7)
+- One small logical task at a time; `dotnet build -warnaserror`, `dotnet test`, and
+  `dotnet format --verify-no-changes` all green after each unit.
+- No packet without verified facts in `docs/data/packets.json` or the decompiled
+  26.3 client (see `AGENTS.md` rule 1a).
+- `UNVERIFIED: <fact>` and stop that portion when a required wire fact is missing.
+- New features land as documented increments as they unblock M7→M13.
