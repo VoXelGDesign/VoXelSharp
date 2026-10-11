@@ -38,7 +38,7 @@
 
   "agent": {
     "build": {
-      "steps": 30
+      "steps": 40
     },
 
     "plan": {
