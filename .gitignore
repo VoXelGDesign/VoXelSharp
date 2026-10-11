@@ -60,6 +60,9 @@ opencode.local.jsonc
 # --- Git worktrees used for parallel agent runs ---
 .worktrees/
 
+# --- Ad-hoc development tooling (registry audit / data-extraction scripts, captures) ---
+scripts/
+
 # --- OS junk ---
 .DS_Store
 Thumbs.db
