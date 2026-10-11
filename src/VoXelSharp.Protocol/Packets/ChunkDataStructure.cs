@@ -56,10 +56,7 @@ public static class ChunkDataIO
         return writer.ToArray();
     }
 
-    /// <summary>
-    /// Decodes <paramref name="sectionCount"/> sections from <paramref name="payload"/>.
-    /// </summary>
-    /// <exception cref="InvalidDataException">Thrown when the payload is malformed or truncated.</exception>
+    /// <summary>Decodes sections from a byte payload.</summary>
     public static ChunkSection[] DecodeSections(byte[] payload, int sectionCount)
     {
         ArgumentNullException.ThrowIfNull(payload);

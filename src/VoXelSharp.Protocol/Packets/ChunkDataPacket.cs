@@ -80,7 +80,7 @@ public sealed class ChunkDataCodec : PacketCodec<ChunkDataPacket>
         foreach (Heightmap heightmap in packet.Heightmaps)
         {
             writer.WriteVarInt(heightmap.Type);
-            writer.WriteBitSet(heightmap.Data);
+            writer.WriteLongArray(heightmap.Data);
         }
 
         writer.WritePrefixedByteArray(packet.Data);
@@ -113,7 +113,7 @@ public sealed class ChunkDataCodec : PacketCodec<ChunkDataPacket>
         for (int i = 0; i < heightmapCount; i++)
         {
             int type = reader.ReadVarInt();
-            long[] data = reader.ReadBitSet();
+            long[] data = reader.ReadLongArray();
             heightmaps[i] = new Heightmap(type, data);
         }
 

@@ -241,27 +241,58 @@ public ref struct PacketReader
     }
 
     /// <summary>
-    /// Reads a BitSet: VarInt length in longs, then the longs (docs/data/wire_types.md).
+    /// Reads a Prefixed Array of Long (the wire form of <c>ByteBufCodecs.LONG_ARRAY</c> and of a
+    /// heightmap's Data): VarInt length in longs, then the longs (docs/data/wire_types.md).
     /// </summary>
     /// <exception cref="InvalidDataException">Thrown when the payload is malformed or truncated.</exception>
-    public long[] ReadBitSet()
+    public long[] ReadLongArray()
     {
         int longCount = ReadVarInt();
         if (longCount < 0)
         {
-            throw new InvalidDataException($"Negative BitSet length ({longCount}).");
+            throw new InvalidDataException($"Negative long-array length ({longCount}).");
         }
 
         if ((long)longCount * 8 > Remaining)
         {
             throw new InvalidDataException(
-                $"BitSet of {longCount} longs is truncated; only {Remaining} bytes remain in the payload.");
+                $"Long array of {longCount} longs is truncated; only {Remaining} bytes remain in the payload.");
         }
 
         var data = new long[longCount];
         for (int i = 0; i < longCount; i++)
         {
             data[i] = ReadLong();
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// Reads a BitSet in the 26.3 wire format (the wire form of <c>ByteBufCodecs.BIT_SET</c>,
+    /// matches <c>java.util.BitSet.valueOf(byte[])</c>): VarInt length in bytes, then the bytes.
+    /// Bit <c>i</c> is set when byte <c>i / 8</c> has bit <c>i % 8</c> set (least significant bit first).
+    /// </summary>
+    /// <exception cref="InvalidDataException">Thrown when the payload is malformed or truncated.</exception>
+    public long[] ReadBitSet()
+    {
+        byte[] bytes = ReadPrefixedByteArray();
+        if (bytes.Length == 0)
+        {
+            return [];
+        }
+
+        var data = new long[(bytes.Length + 7) / 8];
+        for (int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
+        {
+            if (bytes[byteIndex] == 0)
+            {
+                continue;
+            }
+
+            int wordIndex = byteIndex >> 3;
+            int shift = (byteIndex & 7) * 8;
+            data[wordIndex] |= (long)bytes[byteIndex] << shift;
         }
 
         return data;

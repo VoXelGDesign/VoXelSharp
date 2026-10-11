@@ -131,14 +131,18 @@ public static class FlatWorldGenerator
         Array.Fill(columnHeights, height);
 
         long[] data = ChunkDataIO.EncodeHeightmap(WorldHeight, columnHeights);
-        return [new Heightmap(1, data), new Heightmap(4, data)];
+        return [new Heightmap(1, data), new Heightmap(4, data), new Heightmap(5, data)];
     }
 
     /// <summary>
-    /// Builds light data with full sky light (level 15) in every in-world section and no block
-    /// light. The sky light mask has 26 bits (24 sections + 2); bits 1..24 cover the in-world
-    /// sections. Each sky light array is 2048 bytes (half a byte per block light value) filled
-    /// with 0xFF, i.e. every nibble is 15.
+    /// Builds light data matching what the vanilla 26.3 server would send for this flat world.
+    /// The sky lights are indexed by section relative to the world minimum: bit 0 is the section
+    /// 16 blocks below the world minimum, bits 1..24 are the in-world sections, bit 25 is the
+    /// section above the maximum. All in-world sections have sky light data: the terrain section
+    /// (bit 1, y -64..-49) is 0 below the surface and 15 above it, every higher section is 15.
+    /// The below/above sections and all block-light sections have no data, so no bit is set in
+    /// the masks (Pumpkin light.rs, vanilla ClientboundLightUpdatePacketData for 26.3).
+    /// Each sky light array is 2048 bytes (half a byte per block light value, x then z then y).
     /// </summary>
     public static LightData BuildLightData()
     {
@@ -151,9 +155,7 @@ public static class FlatWorldGenerator
         var skyArrays = new byte[SectionCount][];
         for (int i = 0; i < SectionCount; i++)
         {
-            var array = new byte[2048];
-            Array.Fill(array, (byte)0xFF);
-            skyArrays[i] = array;
+            skyArrays[i] = BuildSkyLightArray(isTerrain: i == 0);
         }
 
         return new LightData(
@@ -163,5 +165,18 @@ public static class FlatWorldGenerator
             [],
             skyArrays,
             []);
+    }
+
+    /// <summary>
+    /// Builds one 2048-byte sky light array. The terrain section (section index 0, world
+    /// y -64..-49) is 0 for the 4 underground layers (y -64..-61, bytes 0..511) and 15 above
+    /// the grass surface (bytes 512..2047); every other section is fully 15.
+    /// </summary>
+    private static byte[] BuildSkyLightArray(bool isTerrain)
+    {
+        var array = new byte[2048];
+        int undergroundBytes = isTerrain ? 4 * 16 * 16 / 2 : 0;
+        Array.Fill(array, (byte)0xFF, undergroundBytes, array.Length - undergroundBytes);
+        return array;
     }
 }

@@ -105,7 +105,6 @@ public class ChunkDataStructureTests
     [Fact]
     public void DecodeSectionsTrailingBytesThrows()
     {
-        // Valid single-value section + one extra byte.
         var blocks = new PalettedContainer(0, [0], ChunkDataIO.SectionEntryCount, []);
         var biomes = new PalettedContainer(0, [0], ChunkDataIO.BiomeEntryCount, []);
         byte[] payload = ChunkDataIO.EncodeSections([new ChunkSection(0, 0, blocks, biomes)]);
@@ -245,5 +244,57 @@ public class ChunkDataPacketTests
         Assert.Equal(ConnectionState.Play, ChunkDataCodec.Instance.State);
         Assert.Equal(PacketDirection.Clientbound, ChunkDataCodec.Instance.Direction);
         Assert.Equal(46, ChunkDataCodec.Instance.PacketId);
+    }
+
+    [Theory]
+    // java.util.BitSet wire format (26.3 ByteBufCodecs.BIT_SET): VarInt byte length,
+    // then little-endian bits with trailing zero bytes trimmed.
+    [InlineData(new long[0], new byte[] { 0x00 })]
+    [InlineData(new long[] { 0x02 }, new byte[] { 0x01, 0x02 })] // bit 1
+    [InlineData(new long[] { 0x04 }, new byte[] { 0x01, 0x04 })] // bit 2
+    [InlineData(new long[] { 0x2000001 }, new byte[] { 0x04, 0x01, 0x00, 0x00, 0x02 })] // bits 0 and 25
+    [InlineData(new long[] { 0x1FFFFFE }, new byte[] { 0x04, 0xFE, 0xFF, 0xFF, 0x01 })] // bits 1..24
+    public void BitSetWireFormatMatchesJavaUtilBitSet(long[] mask, byte[] expectedBytes)
+    {
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteBitSet(mask);
+
+        Assert.Equal(expectedBytes, writer.Bytes);
+
+        var reader = new PacketReader(writer.Bytes);
+        Assert.Equal(mask, reader.ReadBitSet());
+        Assert.Equal(0, reader.Remaining);
+    }
+
+    [Fact]
+    public void BitSetTruncatedThrows()
+    {
+        // Declared byte length 5 but only one byte follows.
+        var reader = new PacketReader(new byte[] { 0x05, 0xAA });
+
+        bool caught = false;
+        try
+        {
+            _ = reader.ReadBitSet();
+        }
+        catch (InvalidDataException)
+        {
+            caught = true;
+        }
+
+        Assert.True(caught);
+    }
+
+    [Fact]
+    public void LongArrayWireFormatPrefixedByLongCount()
+    {
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteLongArray([0x0102030405060708]);
+
+        // VarInt 1 (one long) then the big-endian long.
+        Assert.Equal([0x01, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08], writer.Bytes);
+
+        var reader = new PacketReader(writer.Bytes);
+        Assert.Equal([0x0102030405060708], reader.ReadLongArray());
     }
 }

@@ -179,10 +179,11 @@ public sealed class PacketWriter
     }
 
     /// <summary>
-    /// Writes a BitSet: VarInt length in longs, then the longs (docs/data/wire_types.md).
-    /// Bit <c>i</c> is set when <c>(data[i / 64] &amp; (1 &lt;&lt; (i % 64))) != 0</c>.
+    /// Writes a Prefixed Array of Long (the wire form of <c>ByteBufCodecs.LONG_ARRAY</c> and of a
+    /// heightmap's Data): VarInt length in longs, then the longs (docs/data/wire_types.md
+    /// "Prefixed Array (long)"). Bit <c>i</c> is set when <c>(data[i / 64] &amp; (1 &lt;&lt; (i % 64))) != 0</c>.
     /// </summary>
-    public void WriteBitSet(long[] data)
+    public void WriteLongArray(long[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
         WriteVarInt(data.Length);
@@ -190,6 +191,18 @@ public sealed class PacketWriter
         {
             WriteLong(value);
         }
+    }
+
+    /// <summary>
+    /// Writes a BitSet in the 26.3 wire format (the wire form of <c>ByteBufCodecs.BIT_SET</c>,
+    /// matches <c>java.util.BitSet.toByteArray()</c>): VarInt length in bytes, then the bytes.
+    /// Bit <c>i</c> is stored in byte <c>i / 8</c> at bit <c>i % 8</c> (least significant bit first);
+    /// trailing zero bytes are trimmed, an empty set is zero bytes long.
+    /// </summary>
+    public void WriteBitSet(long[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        WritePrefixedByteArray(ToBitSetBytes(data));
     }
 
     /// <summary>
@@ -220,6 +233,43 @@ public sealed class PacketWriter
         EnsureCapacity(8);
         BinaryPrimitives.WriteDoubleBigEndian(_buffer.AsSpan(_position), value);
         _position += 8;
+    }
+
+    /// <summary>
+    /// Converts a sparse long[] bit set (bit <c>i</c> = <c>(data[i / 64] &amp; (1 &lt;&lt; (i % 64))) != 0</c>)
+    /// into the byte layout of <c>java.util.BitSet.toString()</c>'s sibling <c>toByteArray()</c>:
+    /// little-endian bits, trailing zero bytes trimmed, empty when no bits are set.
+    /// </summary>
+    internal static byte[] ToBitSetBytes(long[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        int highestBit = -1;
+        for (int bit = checked(data.Length * 64 - 1); bit >= 0; bit--)
+        {
+            if ((data[bit >> 6] & (1L << (bit & 63))) != 0)
+            {
+                highestBit = bit;
+                break;
+            }
+        }
+
+        if (highestBit < 0)
+        {
+            return [];
+        }
+
+        int byteCount = (highestBit >> 3) + 1;
+        var bytes = new byte[byteCount];
+        for (int byteIndex = 0; byteIndex < byteCount; byteIndex++)
+        {
+            int wordIndex = byteIndex >> 3;
+            long word = data[wordIndex];
+            int shift = (byteIndex & 7) * 8;
+            bytes[byteIndex] = (byte)(word >> shift);
+        }
+
+        return bytes;
     }
 
     private void EnsureCapacity(int additionalBytes)

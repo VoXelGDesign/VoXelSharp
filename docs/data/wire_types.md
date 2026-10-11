@@ -111,16 +111,21 @@ Source: Java Edition protocol/Data types (wiki, 2026-10-09).
 
 ## BitSet
 
-A bit set prefixed by its length in longs.
+A bit set prefixed by its length in bytes, matching `java.util.BitSet` (the wire form of the
+Mojang `ByteBufCodecs.BIT_SET` codec used by light data masks).
 
-- Length: VarInt — number of longs in the following array. May be 0 (no bits set).
-- Data: Array of Long.
-- The `i`th bit (0-based) is set when `(Data[i / 64] & (1 << (i % 64))) != 0`.
+- Length: VarInt — number of bytes in the following array. May be 0 (no bits set).
+- Data: Array of Byte.
+- The `i`th bit (0-based) is set when `(Data[i / 8] & (1 << (i % 8))) != 0`, i.e. least
+  significant bit first. Trailing zero bytes are trimmed on encode; decoding tolerates them.
+- Examples: bits {1, 2, 3} → `01 0E`; bits {1..24} (sky light of a 384-high world) → `04 FE FF FF 01`.
 
-Distinct from `Fixed BitSet (n)` (an `n`-bit set encoded as `ceil(n / 8)` bytes; not
-length-prefixed). Used by Light Data masks and elsewhere.
+Distinct from `Prefixed Array of Long` (`ByteBufCodecs.LONG_ARRAY`), which is VarInt length in
+longs followed by big-endian longs — the wire form used for heightmap `data` fields.
 
-Source: Java Edition protocol/Data types (wiki, 2026-10-09).
+_Source: 26.3 client bytecode (`net.minecraft.network.codec.ByteBufCodecs.BIT_SET`,
+`java.util.BitSet.valueOf`/`toByteArray`), verified 2026-10-09. An earlier wiki capture described
+the long-count form; the 26.3 client uses the byte-array form.
 
 ## Game Profile
 

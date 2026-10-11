@@ -75,9 +75,10 @@ public class FlatWorldGeneratorTests
     {
         FlatWorldChunk chunk = FlatWorldGenerator.Generate(-2, 5);
 
-        Assert.Equal(2, chunk.Heightmaps.Length);
+        Assert.Equal(3, chunk.Heightmaps.Length);
         Assert.Equal(1, chunk.Heightmaps[0].Type); // WORLD_SURFACE
         Assert.Equal(4, chunk.Heightmaps[1].Type); // MOTION_BLOCKING
+        Assert.Equal(5, chunk.Heightmaps[2].Type); // MOTION_BLOCKING_NO_LEAVES
 
         int bitsPerEntry = ChunkDataIO.HeightmapBitsPerEntry(FlatWorldGenerator.WorldHeight);
         Assert.Equal(9, bitsPerEntry);
@@ -96,7 +97,8 @@ public class FlatWorldGeneratorTests
         FlatWorldChunk chunk = FlatWorldGenerator.Generate(0, 0);
         LightData light = chunk.Light;
 
-        // Sky light mask covers the 24 in-world sections (bits 1..24).
+        // Sky light mask covers the 24 in-world sections (bits 1..24);
+        // below/above world and all block-light sections have no data.
         long mask = light.SkyLightMask[0];
         for (int bit = 1; bit <= FlatWorldGenerator.SectionCount; bit++)
         {
@@ -110,10 +112,20 @@ public class FlatWorldGeneratorTests
         Assert.Equal(FlatWorldGenerator.SectionCount, light.SkyLightArrays.Length);
         Assert.Empty(light.BlockLightArrays);
 
+        // Terrain section (index 0, world y -64..-49): dark below the grass surface
+        // (4 underground layers = 512 bytes), sky 15 above; higher sections all sky 15.
+        Assert.Equal(0x00, light.SkyLightArrays[0][0]);
+        Assert.Equal(0x00, light.SkyLightArrays[0][511]);
+        Assert.Equal(0xFF, light.SkyLightArrays[0][512]);
+        Assert.Equal(0xFF, light.SkyLightArrays[0][^1]);
+        for (int i = 1; i < light.SkyLightArrays.Length; i++)
+        {
+            Assert.All(light.SkyLightArrays[i], value => Assert.Equal(0xFF, value));
+        }
+
         foreach (byte[] array in light.SkyLightArrays)
         {
             Assert.Equal(2048, array.Length); // half a byte per light value, 4096 values per section
-            Assert.All(array, value => Assert.Equal(0xFF, value));
         }
     }
 
@@ -164,7 +176,7 @@ public class FlatWorldGeneratorTests
 
         Assert.Equal(8, decoded.ChunkX);
         Assert.Equal(-8, decoded.ChunkZ);
-        Assert.Equal(2, decoded.Heightmaps.Length);
+        Assert.Equal(3, decoded.Heightmaps.Length);
         Assert.Equal(chunk.ChunkX, decoded.ChunkX);
 
         ChunkSection[] sections = ChunkDataIO.DecodeSections(
