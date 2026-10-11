@@ -281,6 +281,68 @@ public sealed class ConnectionSession : IDisposable
             case SetPlayerPositionAndRotationPacket move:
                 return HandlePlayerMove(move);
 
+            case SetPlayerPositionPacket move:
+                return HandlePlayerMove(move);
+
+            case SetPlayerRotationPacket move:
+                return HandlePlayerMove(move);
+
+            case SetPlayerStatusOnlyPacket move:
+                return HandlePlayerMove(move);
+
+            case PunchPacket:
+                // Left-click: no combat/block-breaking interaction logic in this milestone.
+                return false;
+
+            case PlayerCommandPacket:
+                // Sneak/sprint/other player commands; no gameplay effect yet.
+                return false;
+
+            case SetCarriedItemPacket:
+                // Hotbar selection; nothing depends on the selected slot yet.
+                return false;
+
+            case PlayerActionPacket:
+                // Digging/dropping actions; accepted, no block changes are applied yet.
+                return false;
+
+            case UseItemOnPacket:
+                // Right-click against a block; accepted, no interaction logic yet.
+                return false;
+
+            case UseItemPacket:
+                // Right-click using the held item; accepted, no interaction logic yet.
+                return false;
+
+            case AttackPacket:
+                // Attacking an entity; no combat logic in this milestone.
+                return false;
+
+            case ContainerClickPacket:
+            case ContainerClosePacket:
+                // Inventory/container operations are not modelled yet; accepted.
+                return false;
+
+            case MoveVehiclePacket:
+                // Riding vehicles; accompanied by player_input while mounted.
+                return false;
+
+            case ServerPlayerAbilitiesPacket:
+                // Flying toggles; no flight logic in this milestone.
+                return false;
+
+            case PlayerInputPacket:
+                // Forward/back/strafe/jump/sprint inputs; movement authority is client-side here.
+                return false;
+
+            case RecipeBookChangeSettingsPacket:
+                // Recipe book UI state; nothing consumes it yet.
+                return false;
+
+            case ClientCommandPacket:
+                // Client status requests (e.g. respawn); accepted.
+                return false;
+
             case ChunkBatchReceivedPacket:
                 // The client reports its desired chunk rate; the flat-world join sequence
                 // sends all initial chunks at once, so there is nothing to throttle.
@@ -493,6 +555,14 @@ public sealed class ConnectionSession : IDisposable
             new ChunkBatchFinishedPacket(sentChunks),
             cancellationToken);
 
+        // LEVEL_CHUNKS_LOAD_START: the initial chunk batch is fully sent; the client now
+        // transitions into world loading and leaves the "Loading terrain..." screen when the
+        // chunk around the player has rendered (26.3 ClientboundGameEventPacket event 13).
+        await SendAsync(
+            GameEventCodec.Instance,
+            new GameEventPacket(GameEventPacket.LevelChunksLoadStart, 0.0f),
+            cancellationToken);
+
         await SendAsync(
             SetRenderDistanceCodec.Instance,
             new SetRenderDistancePacket(_playData.ViewDistance),
@@ -655,20 +725,47 @@ public sealed class ConnectionSession : IDisposable
 
     private bool HandlePlayerMove(SetPlayerPositionAndRotationPacket move)
     {
+        EnsurePlayerMoveIsInPlay();
+        ValidatePosition(move.X, move.FeetY, move.Z);
+        return false;
+    }
+
+    private bool HandlePlayerMove(SetPlayerPositionPacket move)
+    {
+        EnsurePlayerMoveIsInPlay();
+        ValidatePosition(move.X, move.FeetY, move.Z);
+        return false;
+    }
+
+    private bool HandlePlayerMove(SetPlayerRotationPacket move)
+    {
+        EnsurePlayerMoveIsInPlay();
+        return false;
+    }
+
+    private bool HandlePlayerMove(SetPlayerStatusOnlyPacket move)
+    {
+        EnsurePlayerMoveIsInPlay();
+        return false;
+    }
+
+    private void EnsurePlayerMoveIsInPlay()
+    {
         if (_configurationStage != ConfigurationStage.Play)
         {
             throw new InvalidDataException("Player movement received before the session reached Play.");
         }
+    }
 
+    private static void ValidatePosition(double x, double y, double z)
+    {
         // Reject non-finite coordinates (docs/PROTOCOL.md "Position and Coordinates").
-        if (double.IsNaN(move.X) || double.IsInfinity(move.X)
-            || double.IsNaN(move.FeetY) || double.IsInfinity(move.FeetY)
-            || double.IsNaN(move.Z) || double.IsInfinity(move.Z))
+        if (double.IsNaN(x) || double.IsInfinity(x)
+            || double.IsNaN(y) || double.IsInfinity(y)
+            || double.IsNaN(z) || double.IsInfinity(z))
         {
             throw new InvalidDataException("Player position contains a non-finite value.");
         }
-
-        return false;
     }
 
     private bool HandlePlayKeepAlive(PlayKeepAlivePacket keepAlive)

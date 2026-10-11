@@ -196,6 +196,47 @@ public class PlaySmallPacketTests
         });
     }
 
+    // ---- Game Event (clientbound, id 39) ----
+
+    [Fact]
+    public void GameEventRoundTrips()
+    {
+        using var writer = new PacketWriterScope();
+        GameEventCodec.Instance.Encode(
+            new GameEventPacket(GameEventPacket.LevelChunksLoadStart, 0.0f),
+            writer.Writer);
+
+        var decoded = Assert.IsType<GameEventPacket>(
+            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+
+        Assert.Equal(GameEventPacket.LevelChunksLoadStart, decoded.EventId);
+        Assert.Equal(0.0f, decoded.Value);
+    }
+
+    [Fact]
+    public void GameEventKnownWireForm()
+    {
+        // Packet ID 39, event 13 (LEVEL_CHUNKS_LOAD_START), value 0.0.
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteVarInt(39);
+        writer.Writer.WriteByte(GameEventPacket.LevelChunksLoadStart);
+        writer.Writer.WriteFloat(0.0f);
+
+        var decoded = Assert.IsType<GameEventPacket>(
+            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+
+        Assert.Equal(GameEventPacket.LevelChunksLoadStart, decoded.EventId);
+    }
+
+    [Fact]
+    public void GameEventTruncated()
+    {
+        byte[] payload = [39, 13, 0x00, 0x00]; // value float missing
+
+        Assert.Throws<InvalidDataException>(() =>
+            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, payload));
+    }
+
     // ---- Codec metadata ----
 
     [Fact]
@@ -216,5 +257,9 @@ public class PlaySmallPacketTests
         Assert.Equal(ConnectionState.Play, SetHeldItemCodec.Instance.State);
         Assert.Equal(PacketDirection.Clientbound, SetHeldItemCodec.Instance.Direction);
         Assert.Equal(107, SetHeldItemCodec.Instance.PacketId);
+
+        Assert.Equal(ConnectionState.Play, GameEventCodec.Instance.State);
+        Assert.Equal(PacketDirection.Clientbound, GameEventCodec.Instance.Direction);
+        Assert.Equal(39, GameEventCodec.Instance.PacketId);
     }
 }

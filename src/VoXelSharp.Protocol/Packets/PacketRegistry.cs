@@ -53,6 +53,23 @@ public sealed class PacketRegistry
         registry.Register(PlayClientInformationCodec.Instance);
         registry.Register(ConfirmTeleportationCodec.Instance);
         registry.Register(SetPlayerPositionAndRotationCodec.Instance);
+        registry.Register(SetPlayerPositionCodec.Instance);
+        registry.Register(SetPlayerRotationCodec.Instance);
+        registry.Register(SetPlayerStatusOnlyCodec.Instance);
+        registry.Register(PunchCodec.Instance);
+        registry.Register(PlayerCommandCodec.Instance);
+        registry.Register(SetCarriedItemCodec.Instance);
+        registry.Register(PlayerActionCodec.Instance);
+        registry.Register(UseItemOnCodec.Instance);
+        registry.Register(UseItemCodec.Instance);
+        registry.Register(AttackCodec.Instance);
+        registry.Register(ContainerClickCodec.Instance);
+        registry.Register(ContainerCloseCodec.Instance);
+        registry.Register(MoveVehicleCodec.Instance);
+        registry.Register(ServerPlayerAbilitiesCodec.Instance);
+        registry.Register(PlayerInputCodec.Instance);
+        registry.Register(RecipeBookChangeSettingsCodec.Instance);
+        registry.Register(ClientCommandCodec.Instance);
         registry.Register(ChunkBatchReceivedCodec.Instance);
         registry.Register(PlayerLoadedCodec.Instance);
         registry.Register(ClientTickEndCodec.Instance);
@@ -63,6 +80,7 @@ public sealed class PacketRegistry
         registry.Register(ServerConfigurationPluginMessageCodec.Instance);
         registry.Register(PlayServerboundPluginMessageCodec.Instance);
         registry.Register(PlayClientboundPluginMessageCodec.Instance);
+        registry.Register(GameEventCodec.Instance);
         return registry;
     }
 

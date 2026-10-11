@@ -189,7 +189,7 @@ public class MinecraftServerIntegrationTests
             ChunkDataPacket centerChunk = await ReadChunkDataUntilCenterAsync(reader, registry, ct);
             Assert.Equal(0, centerChunk.ChunkX);
             Assert.Equal(0, centerChunk.ChunkZ);
-            Assert.Equal(2, centerChunk.Heightmaps.Length);
+            Assert.Equal(3, centerChunk.Heightmaps.Length);
 
             var sections = ChunkDataIO.DecodeSections(centerChunk.Data, FlatWorldGenerator.SectionCount);
             Assert.Equal(FlatWorldGenerator.SectionCount, sections.Length);
@@ -278,8 +278,11 @@ public class MinecraftServerIntegrationTests
             Assert.Equal(expected.Dequeue(), actual);
         }
 
-        // Chunk Batch Finished, Set Render Distance, Synchronize Player Position.
+        // Chunk Batch Finished, Game Event (LEVEL_CHUNKS_LOAD_START), Set Render Distance,
+        // Synchronize Player Position.
         Assert.IsType<ChunkBatchFinishedPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+        Assert.IsType<GameEventPacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
         Assert.IsType<SetRenderDistancePacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));

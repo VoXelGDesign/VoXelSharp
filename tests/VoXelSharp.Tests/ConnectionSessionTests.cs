@@ -291,6 +291,10 @@ public class ConnectionSessionTests
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.Equal(expectedChunkCount, batchFinished.BatchSize);
 
+        var gameEvent = Assert.IsType<GameEventPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(GameEventPacket.LevelChunksLoadStart, gameEvent.EventId);
+
         var renderDistance = Assert.IsType<SetRenderDistancePacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.Equal(4, renderDistance.ViewDistance);
@@ -465,6 +469,8 @@ public class ConnectionSessionTests
         }
 
         Assert.IsType<ChunkBatchFinishedPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<GameEventPacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.IsType<SetRenderDistancePacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
