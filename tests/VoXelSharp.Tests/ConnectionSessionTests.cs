@@ -385,6 +385,66 @@ public class ConnectionSessionTests
     }
 
     [Fact]
+    public async Task ImpossibleMovementTeleportsPlayerBackAndKeepsConnection()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Move is inside world bounds but 200 blocks off the spawn in a single packet —
+        // the validator rejects it and sends a correction teleport back to the last
+        // accepted position (the spawn), keeping the connection alive.
+        await harness.ClientSendAsync(
+            SetPlayerPositionAndRotationCodec.Instance,
+            new SetPlayerPositionAndRotationPacket(200.0, -60.0, 0.0, 0f, 0f, flags: 0x01));
+
+        // Read the correction teleport; synchronize-player-position with a fresh teleport id.
+        byte[] correctionPayload = await harness.ReadServerFrameAsync();
+        var correction = Assert.IsType<SynchronizePlayerPositionPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, correctionPayload));
+        // The join sequence issued teleport id 1, so the correction must be the next id (2).
+        Assert.Equal(2, correction.TeleportId);
+        Assert.Equal(0.5, correction.X);
+        Assert.Equal(-60.0, correction.Y);
+        Assert.Equal(0.5, correction.Z);
+
+        // The rejected move never reached authoritative state.
+        Assert.NotNull(harness.Session.Player);
+        Assert.Equal(0.5, harness.Session.Player!.X);
+        Assert.Equal(-60.0, harness.Session.Player!.FeetY);
+        Assert.Equal(0.5, harness.Session.Player!.Z);
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task MoveOutsideWorldBoundsTeleportsPlayerBack()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Below the world minimum (-64): rejected by bounds, then corrected.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -100.0, 0.5, flags: 0x00));
+
+        byte[] correctionPayload = await harness.ReadServerFrameAsync();
+        var correction = Assert.IsType<SynchronizePlayerPositionPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, correctionPayload));
+        Assert.Equal(2, correction.TeleportId);
+        Assert.Equal(0.5, correction.X);
+        Assert.Equal(-60.0, correction.Y);
+        Assert.Equal(0.5, correction.Z);
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
     public async Task ClientBrandDoesNotDisconnectSession()
     {
         await using var harness = new SessionHarness();

@@ -286,16 +286,16 @@ public sealed class ConnectionSession : IDisposable
                 return HandleConfirmTeleportation(confirm);
 
             case SetPlayerPositionAndRotationPacket move:
-                return HandlePlayerMove(move);
+                return await HandlePlayerMoveAsync(move, cancellationToken);
 
             case SetPlayerPositionPacket move:
-                return HandlePlayerMove(move);
+                return await HandlePlayerMoveAsync(move, cancellationToken);
 
             case SetPlayerRotationPacket move:
-                return HandlePlayerMove(move);
+                return await HandlePlayerMoveAsync(move, cancellationToken);
 
             case SetPlayerStatusOnlyPacket move:
-                return HandlePlayerMove(move);
+                return await HandlePlayerMoveAsync(move, cancellationToken);
 
             case PunchPacket:
                 // Left-click: no combat/block-breaking interaction logic in this milestone.
@@ -737,31 +737,45 @@ public sealed class ConnectionSession : IDisposable
         return false;
     }
 
-    private bool HandlePlayerMove(SetPlayerPositionAndRotationPacket move)
+    private async Task<bool> HandlePlayerMoveAsync(SetPlayerPositionAndRotationPacket move, CancellationToken cancellationToken)
     {
         EnsurePlayerMoveIsInPlay();
         ValidatePosition(move.X, move.FeetY, move.Z);
+        long tick = _getTick();
+        if (_player is not null && !PlayerMovementValidator.IsMoveAllowed(_player, move.X, move.FeetY, move.Z, tick))
+        {
+            await CorrectPlayerPositionAsync(cancellationToken);
+            return false;
+        }
+
         _player?.ApplyPosition(
             move.X, move.FeetY, move.Z,
             onGround: (move.Flags & 0x01) != 0,
             horizontalCollision: (move.Flags & 0x02) != 0,
-            tick: _getTick());
+            tick);
         return false;
     }
 
-    private bool HandlePlayerMove(SetPlayerPositionPacket move)
+    private async Task<bool> HandlePlayerMoveAsync(SetPlayerPositionPacket move, CancellationToken cancellationToken)
     {
         EnsurePlayerMoveIsInPlay();
         ValidatePosition(move.X, move.FeetY, move.Z);
+        long tick = _getTick();
+        if (_player is not null && !PlayerMovementValidator.IsMoveAllowed(_player, move.X, move.FeetY, move.Z, tick))
+        {
+            await CorrectPlayerPositionAsync(cancellationToken);
+            return false;
+        }
+
         _player?.ApplyPosition(
             move.X, move.FeetY, move.Z,
             onGround: (move.Flags & 0x01) != 0,
             horizontalCollision: (move.Flags & 0x02) != 0,
-            tick: _getTick());
+            tick);
         return false;
     }
 
-    private bool HandlePlayerMove(SetPlayerRotationPacket move)
+    private Task<bool> HandlePlayerMoveAsync(SetPlayerRotationPacket move, CancellationToken cancellationToken)
     {
         EnsurePlayerMoveIsInPlay();
         _player?.ApplyRotation(
@@ -769,17 +783,48 @@ public sealed class ConnectionSession : IDisposable
             onGround: (move.Flags & 0x01) != 0,
             horizontalCollision: (move.Flags & 0x02) != 0,
             tick: _getTick());
-        return false;
+        return Task.FromResult(false);
     }
 
-    private bool HandlePlayerMove(SetPlayerStatusOnlyPacket move)
+    private Task<bool> HandlePlayerMoveAsync(SetPlayerStatusOnlyPacket move, CancellationToken cancellationToken)
     {
         EnsurePlayerMoveIsInPlay();
         _player?.ApplyStatus(
             onGround: (move.Flags & 0x01) != 0,
             horizontalCollision: (move.Flags & 0x02) != 0,
             tick: _getTick());
-        return false;
+        return Task.FromResult(false);
+    }
+
+    /// <summary>
+    /// Teleports the client back to the player's last accepted position after an impossible
+    /// movement (gameplay validation: reject/correct the action while keeping the connection
+    /// alive, per AGENTS.md "Error Handling"). If no position has been accepted yet, the spawn
+    /// point is used.
+    /// </summary>
+    private async Task CorrectPlayerPositionAsync(CancellationToken cancellationToken)
+    {
+        if (_player is null)
+        {
+            return;
+        }
+
+        int teleportId = _nextTeleportId++;
+        _lastIssuedTeleportId = teleportId;
+        await SendAsync(
+            SynchronizePlayerPositionCodec.Instance,
+            new SynchronizePlayerPositionPacket(
+                teleportId,
+                _player.X,
+                _player.FeetY,
+                _player.Z,
+                0.0,
+                0.0,
+                0.0,
+                _player.Yaw,
+                _player.Pitch,
+                TeleportFlags.None),
+            cancellationToken);
     }
 
     private void EnsurePlayerMoveIsInPlay()
