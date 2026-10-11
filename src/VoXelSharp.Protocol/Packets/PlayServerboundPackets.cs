@@ -433,6 +433,53 @@ public sealed class SetCarriedItemCodec : PacketCodec<SetCarriedItemPacket>
 }
 
 /// <summary>
+/// Pick Item From Block (play/serverbound, packet ID 36, official name "pick_item_from_block").
+/// Sent when the player middle-clicks a block in the world. Field order verified from the 26.3
+/// client (ServerboundPickItemFromBlockPacket.STREAM_CODEC): Location (Position), Include Data (Boolean).
+/// </summary>
+public sealed class PickItemFromBlockPacket : IPacket
+{
+    public PickItemFromBlockPacket(BlockPosition location, bool includeData)
+    {
+        Location = location;
+        IncludeData = includeData;
+    }
+
+    /// <summary>The block position that was middle-clicked.</summary>
+    public BlockPosition Location { get; }
+
+    /// <summary>Whether the block's data is picked too (e.g. bucket contents).</summary>
+    public bool IncludeData { get; }
+}
+
+/// <summary>Codec for <see cref="PickItemFromBlockPacket"/>.</summary>
+public sealed class PickItemFromBlockCodec : PacketCodec<PickItemFromBlockPacket>
+{
+    /// <summary>Singleton access.</summary>
+    public static PickItemFromBlockCodec Instance { get; } = new();
+
+    /// <inheritdoc />
+    public override ConnectionState State => ConnectionState.Play;
+
+    /// <inheritdoc />
+    public override PacketDirection Direction => PacketDirection.Serverbound;
+
+    /// <inheritdoc />
+    public override int PacketId => 36;
+
+    /// <inheritdoc />
+    protected override void EncodeBody(PickItemFromBlockPacket packet, PacketWriter writer)
+    {
+        writer.WritePosition(packet.Location);
+        writer.WriteBoolean(packet.IncludeData);
+    }
+
+    /// <inheritdoc />
+    protected override PickItemFromBlockPacket DecodeBody(ref PacketReader reader)
+        => new(reader.ReadPosition(), reader.ReadBoolean());
+}
+
+/// <summary>
 /// Player Action (play/serverbound, packet ID 41, official name "player_action").
 /// Field order per docs/data/packets.json and the 26.3 client (ServerboundPlayerActionPacket):
 /// Status (VarInt Enum), Location (Position), Face (Byte Enum), Sequence (VarInt).

@@ -463,11 +463,25 @@ public class ConnectionSessionTests
             PlayerActionCodec.Instance,
             new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 5));
 
-        // Block Update (id 8) then Block Changed Ack (id 4) are sent.
+        // Block Update (id 8), then the item drop (Add Entity + Set Entity Data), then Block Changed Ack.
         var update = Assert.IsType<BlockUpdatePacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
         Assert.Equal(new BlockPosition(0, -61, 0), update.Location);
         Assert.Equal(BlockStateIds.Air, update.BlockStateId);
+
+        var drop = Assert.IsType<AddEntityPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(AddEntityPacket.EntityTypeItem, drop.EntityTypeId);
+        Assert.Equal(0.5, drop.X);
+        Assert.Equal(-60.0, drop.Y);
+
+        var dropData = Assert.IsType<SetEntityDataPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(drop.EntityId, dropData.EntityId);
+        Assert.Single(dropData.Values);
+        Assert.Equal(SetEntityDataPacket.ItemEntityItemFieldId, dropData.Values[0].Id);
+        Assert.Equal(SetEntityDataPacket.ItemStackSerializerId, dropData.Values[0].SerializerId);
+        Assert.Equal(CreativeBlockCatalog.ItemIdForBlockState(BlockStateIds.GrassBlock), dropData.Values[0].ItemId);
 
         var ack = Assert.IsType<BlockChangedAckPacket>(
             registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
@@ -515,12 +529,116 @@ public class ConnectionSessionTests
             PlayerActionCodec.Instance,
             new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 1));
         await harness.ReadServerFrameAsync(); // Block Update
+        await harness.ReadServerFrameAsync(); // Add Entity (drop)
+        await harness.ReadServerFrameAsync(); // Set Entity Data (drop item)
         await harness.ReadServerFrameAsync(); // Block Changed Ack
 
         // The shared world now has air in that cell, and the layer above stays unchanged.
         await WaitUntilAsync(() => harness.World.GetBlock(0, -61, 0) == BlockStateIds.Air);
         Assert.Equal(BlockStateIds.Air, harness.World.GetBlock(0, -61, 0));
         Assert.Equal(BlockStateIds.Air, harness.World.GetBlock(0, -60, 0));
+    }
+
+    [Fact]
+    public async Task WalkingIntoDropPicksItUp()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Break the grass block at (0, -61, 0) -> a drop is spawned at its top face.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -60.0, 0.5, flags: 0x01));
+        await harness.ClientSendAsync(
+            PlayerActionCodec.Instance,
+            new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 1));
+        await harness.ReadServerFrameAsync(); // Block Update
+        var drop = Assert.IsType<AddEntityPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        await harness.ReadServerFrameAsync(); // Set Entity Data (drop item)
+        await harness.ReadServerFrameAsync(); // Block Changed Ack
+
+        // Move the player onto the drop's cell (drop at (0, -60.5, 0.5)); the position packet
+        // from the same cell center triggers pickup.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -60.0, 0.5, flags: 0x01));
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.3, -60.0, 0.3, flags: 0x01));
+
+        // The server sends take_item_entity (item drop id -> player id 1, amount 1).
+        byte[] payload = await harness.ReadServerFrameAsync();
+        var take = Assert.IsType<TakeItemEntityPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, payload));
+        Assert.Equal(drop.EntityId, take.ItemEntityId);
+        Assert.Equal(1, take.PlayerId);
+        Assert.Equal(1, take.Amount);
+
+        // The picked-up item is placed into the first free inventory slot (0) and announced
+        // via set_player_inventory so it appears in the client inventory UI.
+        byte[] inventoryPayload = await harness.ReadServerFrameAsync();
+        var inv = Assert.IsType<SetPlayerInventoryPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, inventoryPayload));
+        Assert.Equal(0, inv.Slot);
+        Assert.Equal(1, inv.Count);
+        Assert.Equal(CreativeBlockCatalog.ItemIdForBlockState(BlockStateIds.GrassBlock), inv.ItemId);
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task PickingUpSameItemStacksInOneSlot()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Break two grass blocks -> two drops of the same item.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -60.0, 0.5, flags: 0x01));
+        for (int z = 0; z < 2; z++)
+        {
+            await harness.ClientSendAsync(
+                PlayerActionCodec.Instance,
+                new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, z), face: 3, sequence: z + 1));
+            await harness.ReadServerFrameAsync(); // Block Update
+            await harness.ReadServerFrameAsync(); // Add Entity (drop)
+            await harness.ReadServerFrameAsync(); // Set Entity Data (drop item)
+            await harness.ReadServerFrameAsync(); // Block Changed Ack
+        }
+        await WaitUntilAsync(() =>
+            harness.World.GetBlock(0, -61, 0) == BlockStateIds.Air && harness.World.GetBlock(0, -61, 1) == BlockStateIds.Air);
+
+        // Walk over both drops (centers (0,-60.5,0) and (0,-60.5,1)); a midpoint z keeps
+        // both within the one-block pickup radius.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.3, -60.0, 0.8, flags: 0x01));
+
+        // take_item_entity for the first drop, then set_player_inventory slot 0 count 1.
+        Assert.IsType<TakeItemEntityPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        var first = Assert.IsType<SetPlayerInventoryPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(1, first.Count);
+
+        // Second drop: take_item_entity + set_player_inventory for the SAME slot now count 2.
+        Assert.IsType<TakeItemEntityPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        var second = Assert.IsType<SetPlayerInventoryPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(0, second.Slot);
+        Assert.Equal(2, second.Count);
+        Assert.Equal(CreativeBlockCatalog.ItemIdForBlockState(BlockStateIds.GrassBlock), second.ItemId);
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
     }
 
     [Fact]
@@ -554,6 +672,59 @@ public class ConnectionSessionTests
         Assert.Equal(3, ack.Sequence);
 
         await WaitUntilAsync(() => harness.World.GetBlock(0, -60, 0) == BlockStateIds.Stone);
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task PlacingPickedUpBlockConsumesInventory()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Break a grass block, then pick up the drop so the item lands in hotbar slot 0.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -60.0, 0.5, flags: 0x01));
+        await harness.ClientSendAsync(
+            PlayerActionCodec.Instance,
+            new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 1));
+        await harness.ReadServerFrameAsync(); // Block Update
+        await harness.ReadServerFrameAsync(); // Add Entity (drop)
+        await harness.ReadServerFrameAsync(); // Set Entity Data (drop item)
+        await harness.ReadServerFrameAsync(); // Block Changed Ack
+
+        // Step onto the drop to pick it up.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.3, -60.0, 0.3, flags: 0x01));
+        Assert.IsType<TakeItemEntityPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.IsType<SetPlayerInventoryPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync())); // slot 0, count 1
+
+        // Select slot 0 (the hotbar) and right-click the ground to place the held block.
+        await harness.ClientSendAsync(SetCarriedItemCodec.Instance, new SetCarriedItemPacket(0));
+        await harness.ClientSendAsync(
+            UseItemOnCodec.Instance,
+            new UseItemOnPacket(0, new BlockPosition(0, -61, 0), face: 1, 0.5f, 0.5f, 0.5f, false, false, sequence: 5));
+
+        var update = Assert.IsType<BlockUpdatePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(new BlockPosition(0, -60, 0), update.Location);
+        Assert.Equal(BlockStateIds.GrassBlock, update.BlockStateId);
+
+        // One item was consumed: slot 0 count is decremented (0 = empty), announced before ack.
+        var emptied = Assert.IsType<SetPlayerInventoryPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(0, emptied.Slot);
+        Assert.Equal(0, emptied.Count);
+
+        var ack = Assert.IsType<BlockChangedAckPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+
         await harness.AssertStateAsync(ConnectionState.Play);
         await harness.AssertSessionOpenAsync();
     }

@@ -155,7 +155,7 @@ public class PlayerInfoPacketTests
             true);
         var original = new PlayerInfoUpdatePacket(
             PlayerInfoActions.AddPlayer | PlayerInfoActions.UpdateGameMode | PlayerInfoActions.UpdateListed
-                | PlayerInfoActions.UpdateLatency | PlayerInfoActions.UpdateListPriority | PlayerInfoActions.UpdateHat,
+                | PlayerInfoActions.UpdateLatency | PlayerInfoActions.UpdateListOrder | PlayerInfoActions.UpdateHat,
             [first, second]);
         using var writer = new PacketWriterScope();
 

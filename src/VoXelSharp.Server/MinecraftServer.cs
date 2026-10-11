@@ -50,9 +50,9 @@ public sealed class MinecraftServer : IAsyncDisposable
     private readonly ILogger _logger;
     private readonly ServerTickLoop _tickLoop = new();
     private readonly FlatWorld _world = new();
+    private readonly ServerEntityIds _entityIds = new();
     private Task? _acceptTask;
     private bool _started;
-    private int _nextEntityId;
 
     /// <summary>
     /// Creates a server.
@@ -167,9 +167,9 @@ public sealed class MinecraftServer : IAsyncDisposable
                 await using NetworkStream stream = client.GetStream();
                 var pipe = new StreamDuplexPipe(stream);
                 var stateMachine = new ConnectionStateMachine();
-                int entityId = Interlocked.Increment(ref _nextEntityId);
+                int entityId = _entityIds.Next();
                 var playData = new ServerPlayDataProvider(entityId);
-                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _world, _logger, getTick: _tickLoop.GetCurrentTick);
+                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _world, _logger, getTick: _tickLoop.GetCurrentTick, entityIds: _entityIds);
 
                 await session.RunAsync(_stoppingCts.Token);
             }

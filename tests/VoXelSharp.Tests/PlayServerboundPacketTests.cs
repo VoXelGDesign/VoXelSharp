@@ -475,6 +475,46 @@ public class PlayServerboundPacketTests
         Assert.Equal(0, decoded.Slot);
     }
 
+    // ---- Pick Item From Block (serverbound, id 36) ----
+
+    [Fact]
+    public void PickItemFromBlockRoundTrips()
+    {
+        var original = new PickItemFromBlockPacket(new BlockPosition(1, 64, -2), includeData: true);
+        using var writer = new PacketWriterScope();
+
+        PickItemFromBlockCodec.Instance.Encode(original, writer.Writer);
+
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PickItemFromBlockPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
+
+        Assert.Equal(new BlockPosition(1, 64, -2), decoded.Location);
+        Assert.True(decoded.IncludeData);
+    }
+
+    [Fact]
+    public void PickItemFromBlockKnownWireForm()
+    {
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteVarInt(36);
+        writer.Writer.WritePosition(new BlockPosition(0, 64, 0));
+        writer.Writer.WriteBoolean(false);
+
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PickItemFromBlockPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
+
+        Assert.Equal(new BlockPosition(0, 64, 0), decoded.Location);
+        Assert.False(decoded.IncludeData);
+    }
+
+    [Fact]
+    public void PickItemFromBlockTruncatedThrows()
+    {
+        // Only the packet ID and position, missing the include-data boolean.
+        using var writer = new PacketWriterScope();
+        writer.Writer.WriteVarInt(36);
+        writer.Writer.WritePosition(new BlockPosition(0, 64, 0));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
+    }
+
     // ---- Player Action (serverbound, id 41) ----
 
     [Fact]
@@ -1049,6 +1089,10 @@ public class PlayServerboundPacketTests
         Assert.Equal(ConnectionState.Play, SetCarriedItemCodec.Instance.State);
         Assert.Equal(PacketDirection.Serverbound, SetCarriedItemCodec.Instance.Direction);
         Assert.Equal(54, SetCarriedItemCodec.Instance.PacketId);
+
+        Assert.Equal(ConnectionState.Play, PickItemFromBlockCodec.Instance.State);
+        Assert.Equal(PacketDirection.Serverbound, PickItemFromBlockCodec.Instance.Direction);
+        Assert.Equal(36, PickItemFromBlockCodec.Instance.PacketId);
 
         Assert.Equal(ConnectionState.Play, PlayerActionCodec.Instance.State);
         Assert.Equal(PacketDirection.Serverbound, PlayerActionCodec.Instance.Direction);

@@ -89,6 +89,11 @@ public sealed class PacketRegistry
         registry.Register(ServerboundChatCommandCodec.Instance);
         registry.Register(ServerboundChatCommandSignedCodec.Instance);
         registry.Register(ServerboundChatSessionUpdateCodec.Instance);
+        registry.Register(PickItemFromBlockCodec.Instance);
+        registry.Register(AddEntityCodec.Instance);
+        registry.Register(SetEntityDataCodec.Instance);
+        registry.Register(TakeItemEntityCodec.Instance);
+        registry.Register(SetPlayerInventoryCodec.Instance);
         return registry;
     }
 

@@ -54,6 +54,7 @@ public sealed class ConnectionSession : IDisposable
     private readonly IConfigurationDataProvider _configurationData;
     private readonly IPlayDataProvider _playData;
     private readonly IWorldAccess _world;
+    private readonly ServerEntityIds _entityIds;
     private readonly ILogger _logger;
     private readonly TimeSpan _keepAliveInterval;
     private readonly Func<long> _getTick;
@@ -73,6 +74,16 @@ public sealed class ConnectionSession : IDisposable
     // item the client has placed in each slot (set_creative_mode_slot).
     private int _carriedSlot;
     private readonly CreativeSlotItem[] _creativeItemBySlot = new CreativeSlotItem[9];
+
+    // Item drops spawned by this session: entity id -> (position, item registry id). Pickup is
+    // checked on player movement; keyed by entity id so take_item_entity can reference the exact entity.
+    private readonly Dictionary<int, DropInfo> _drops = new();
+
+    // Server-side copy of the player's inventory: per slot the item registry id (0 = empty) and
+    // its count. 36 slots (0-35); slots 0-8 are the hotbar. Sent to the client via
+    // set_player_inventory on change so picked-up items appear in the inventory UI/hotbar.
+    private readonly int[] _inventoryItem = new int[36];
+    private readonly int[] _inventoryCount = new int[36];
 
     // Serializes all writes to the transport (the keep-alive loop writes concurrently with
     // the read-loop responses).
@@ -95,6 +106,7 @@ public sealed class ConnectionSession : IDisposable
     /// <param name="logger">Logger for this session.</param>
     /// <param name="keepAliveInterval">Interval between Play Keep Alive packets (default 15s).</param>
     /// <param name="getTick">Provides the current server tick for movement timestamps; defaults to a per-session counter when the server tick loop is not wired in.</param>
+    /// <param name="entityIds">Shared entity ID allocator (players and world entities share one ID space).</param>
     /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
     public ConnectionSession(
         IDuplexPipe transport,
@@ -106,7 +118,8 @@ public sealed class ConnectionSession : IDisposable
         IWorldAccess world,
         ILogger logger,
         TimeSpan? keepAliveInterval = null,
-        Func<long>? getTick = null)
+        Func<long>? getTick = null,
+        ServerEntityIds? entityIds = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(registry);
@@ -124,6 +137,7 @@ public sealed class ConnectionSession : IDisposable
         _configurationData = configurationData;
         _playData = playData;
         _world = world;
+        _entityIds = entityIds ?? new ServerEntityIds(2);
         _logger = logger;
         _keepAliveInterval = keepAliveInterval ?? TimeSpan.FromSeconds(15);
         _getTick = getTick ?? (() => Interlocked.Increment(ref _fallbackTick));
@@ -341,6 +355,11 @@ public sealed class ConnectionSession : IDisposable
             case ContainerClickPacket:
             case ContainerClosePacket:
                 // Inventory/container operations are not modelled yet; accepted.
+                return false;
+
+            case PickItemFromBlockPacket:
+                // Middle-click pick-block; the creative inventory is not modelled yet, so the
+                // picked item is not placed back into a hotbar slot.
                 return false;
 
             case MoveVehiclePacket:
@@ -691,9 +710,19 @@ public sealed class ConnectionSession : IDisposable
             ListPriority: 0,
             HatVisible: false);
 
+        // Match the vanilla server's initial player packet (26.3
+        // ClientboundPlayerInfoUpdatePacket.createPlayerInitializing): all 8 actions are set so the
+        // client applies every field (AddPlayer, InitializeChat absent, game mode, listed, latency,
+        // display name, list order, hat). A packet with only AddPlayer leaves the entry with the
+        // builder default listed=false and the player never appears in the Tab list.
+        var actions = PlayerInfoActions.AddPlayer | PlayerInfoActions.InitializeChat
+            | PlayerInfoActions.UpdateGameMode | PlayerInfoActions.UpdateListed
+            | PlayerInfoActions.UpdateLatency | PlayerInfoActions.UpdateDisplayName
+            | PlayerInfoActions.UpdateListOrder | PlayerInfoActions.UpdateHat;
+
         await SendAsync(
             PlayerInfoUpdateCodec.Instance,
-            new PlayerInfoUpdatePacket(PlayerInfoActions.AddPlayer, [entry]),
+            new PlayerInfoUpdatePacket(actions, [entry]),
             cancellationToken);
     }
 
@@ -782,6 +811,7 @@ public sealed class ConnectionSession : IDisposable
             onGround: (move.Flags & 0x01) != 0,
             horizontalCollision: (move.Flags & 0x02) != 0,
             tick);
+        await CheckItemPickupAsync(cancellationToken);
         return false;
     }
 
@@ -801,6 +831,7 @@ public sealed class ConnectionSession : IDisposable
             onGround: (move.Flags & 0x01) != 0,
             horizontalCollision: (move.Flags & 0x02) != 0,
             tick);
+        await CheckItemPickupAsync(cancellationToken);
         return false;
     }
 
@@ -893,6 +924,7 @@ public sealed class ConnectionSession : IDisposable
                     BlockUpdateCodec.Instance,
                     new BlockUpdatePacket(action.Location, BlockStateIds.Air),
                     cancellationToken);
+                await SpawnBlockDropAsync(action.Location, blockStateId, cancellationToken);
             }
         }
 
@@ -917,8 +949,9 @@ public sealed class ConnectionSession : IDisposable
     {
         EnsurePlayerMoveIsInPlay();
 
+        int heldItemId = HeldItemId();
         var target = TargetCellFor(useItemOn);
-        int blockStateId = CreativeBlockCatalog.BlockStateIdForItem(HeldItemId());
+        int blockStateId = CreativeBlockCatalog.BlockStateIdForItem(heldItemId);
         if (blockStateId >= 0
             && _player is not null
             && PlayerMovementValidator.IsWithinInteractionRange(_player, target.X, target.Y, target.Z)
@@ -929,6 +962,23 @@ public sealed class ConnectionSession : IDisposable
                 BlockUpdateCodec.Instance,
                 new BlockUpdatePacket(target, blockStateId),
                 cancellationToken);
+
+            // Consume one held item from the survival inventory and announce the change so the
+            // client's hotbar count stays in sync.
+            int slot = _carriedSlot & 0xFF;
+            if (slot < _inventoryItem.Length && _inventoryItem[slot] == heldItemId && _inventoryCount[slot] > 0)
+            {
+                _inventoryCount[slot]--;
+                if (_inventoryCount[slot] == 0)
+                {
+                    _inventoryItem[slot] = 0;
+                }
+
+                await SendAsync(
+                    SetPlayerInventoryCodec.Instance,
+                    new SetPlayerInventoryPacket(slot, _inventoryCount[slot], _inventoryItem[slot]),
+                    cancellationToken);
+            }
         }
 
         // Acknowledge the placement sequence (block_changed_ack).
@@ -942,7 +992,16 @@ public sealed class ConnectionSession : IDisposable
     /// <summary>The item registry ID held in the selected hotbar slot, or -1 when empty.</summary>
     private int HeldItemId()
     {
-        CreativeSlotItem? held = _creativeItemBySlot[_carriedSlot & 0xFF];
+        // Picked-up items land in the survival inventory (hotbar = slots 0-8). The creative
+        // slot map (set_creative_mode_slot) is only populated in creative mode, so the held item
+        // is read from the inventory first.
+        int slot = _carriedSlot & 0xFF;
+        if (slot < _inventoryItem.Length && _inventoryItem[slot] != 0 && _inventoryCount[slot] > 0)
+        {
+            return _inventoryItem[slot];
+        }
+
+        CreativeSlotItem? held = _creativeItemBySlot[slot];
         return held is not null && !held.IsEmpty ? held.ItemId : -1;
     }
 
@@ -985,6 +1044,139 @@ public sealed class ConnectionSession : IDisposable
             new SystemChatPacket(new NbtString($"{author}: {chat.Message}"), overlay: false),
             cancellationToken);
         return false;
+    }
+
+    /// <summary>
+    /// Spawns a visible item drop at the broken block's position (clientbound add_entity +
+    /// set_entity_data), so the player sees the block turn into an item. The item is positioned at
+    /// the top face of the removed block; the client applies gravity/movement locally.
+    /// Basement for pickup logic (items litter the ground until picked up).
+    /// </summary>
+    private async Task SpawnBlockDropAsync(BlockPosition block, int brokenBlockStateId, CancellationToken cancellationToken)
+    {
+        int itemId = CreativeBlockCatalog.ItemIdForBlockState(brokenBlockStateId);
+        if (itemId < 0)
+        {
+            return; // e.g. bedrock drops nothing
+        }
+
+        int dropId = _entityIds.Next();
+        double dropX = block.X + 0.5;
+        double dropZ = block.Z + 0.5;
+        double dropY = block.Y + 1; // item spawns on the removed block's top face
+
+        await SendAsync(
+            AddEntityCodec.Instance,
+            new AddEntityPacket(
+                dropId,
+                0,
+                dropId, // deterministic UUID lsb for testing/observability
+                AddEntityPacket.EntityTypeItem,
+                dropX,
+                dropY,
+                dropZ,
+                // Small upward pop so the client visibly throws the item (vanilla
+                // ItemEntity default delta (random±0.1, 0.2, random±0.1)).
+                0.0,
+                0.2,
+                0.0,
+                0f,
+                0f,
+                0f,
+                0),
+            cancellationToken);
+
+        // The item entity's stack travels in set_entity_data (ItemEntity.DATA_ITEM field id 8;
+        // serializer 7 = ITEM_STACK).
+        await SendAsync(
+            SetEntityDataCodec.Instance,
+            new SetEntityDataPacket(
+                dropId,
+                [new EntityDataItemValue(SetEntityDataPacket.ItemEntityItemFieldId, SetEntityDataPacket.ItemStackSerializerId, 1, itemId)]),
+            cancellationToken);
+
+        // Track the drop's spawn position + item so pickup can be detected on later movement.
+        _drops.Add(dropId, new DropInfo(dropX, dropY, dropZ, itemId));
+    }
+
+    /// <summary>Position and item of a spawned item drop (see <c>_drops</c>).</summary>
+    private sealed record DropInfo(double X, double Y, double Z, int ItemId);
+
+    /// <summary>
+    /// Detects item-drop pickup when the player's feet position is within one block of a spawned
+    /// drop (the vanilla client picks up items whose bounding box is ~0.9 blocks wide). On pickup
+    /// the server sends take_item_entity (which animates the item to the player and removes it),
+    /// then stacks the item into the inventory — into an existing same-item slot first, otherwise
+    /// the first free slot — and announces the change with set_player_inventory so it shows in the UI.
+    /// </summary>
+    private async Task CheckItemPickupAsync(CancellationToken cancellationToken)
+    {
+        if (_player is null || _drops.Count == 0)
+        {
+            return;
+        }
+
+        int playerId = _playData.PlayerEntityId;
+        foreach ((int dropId, DropInfo drop) in _drops.ToArray())
+        {
+            double dx = drop.X - _player.X;
+            double dy = drop.Y - _player.FeetY;
+            double dz = drop.Z - _player.Z;
+            double distanceSquared = (dx * dx) + (dy * dy) + (dz * dz);
+            if (distanceSquared > 1.0)
+            {
+                continue; // further than ~1 block; not yet pickable
+            }
+
+            _drops.Remove(dropId);
+            await SendAsync(
+                TakeItemEntityCodec.Instance,
+                new TakeItemEntityPacket(dropId, playerId, amount: 1),
+                cancellationToken);
+
+            int slot = StackOrFreeSlot(drop.ItemId);
+            if (slot >= 0)
+            {
+                _inventoryItem[slot] = drop.ItemId;
+                _inventoryCount[slot]++;
+                await SendAsync(
+                    SetPlayerInventoryCodec.Instance,
+                    new SetPlayerInventoryPacket(slot, _inventoryCount[slot], drop.ItemId),
+                    cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the slot to place one more of <paramref name="itemId"/>: an existing slot with the
+    /// same item below max stack, else the first free slot, else -1 (bag full).
+    /// </summary>
+    private int StackOrFreeSlot(int itemId)
+    {
+        // First try to stack onto an existing same-item slot.
+        for (int i = 0; i < _inventoryItem.Length; i++)
+        {
+            if (_inventoryItem[i] == itemId && _inventoryCount[i] < 99)
+            {
+                return i;
+            }
+        }
+
+        return FirstFreeInventorySlot();
+    }
+
+    /// <summary>Returns the first empty inventory slot (0-35), or -1 when the bag is full.</summary>
+    private int FirstFreeInventorySlot()
+    {
+        for (int i = 0; i < _inventoryItem.Length; i++)
+        {
+            if (_inventoryItem[i] == 0)
+            {
+                return i;
+            }
+        }
+
+        return -1;
     }
 
     private bool HandlePlayKeepAlive(PlayKeepAlivePacket keepAlive)

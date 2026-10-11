@@ -20,4 +20,16 @@ public static class CreativeBlockCatalog
             87 => BlockStateIds.Bedrock,    // item minecraft:bedrock -> block bedrock (88)
             _ => -1,
         };
+
+    /// <summary>Returns the item registry ID a broken block drops, or -1 for blocks that drop nothing.</summary>
+    public static int ItemIdForBlockState(int blockStateId)
+        => blockStateId switch
+        {
+            // Block state IDs (docs/data/blocks.json) -> item registry IDs (server reports).
+            // Bedrock drops nothing (unbreakable); grass_block drops itself here for simplicity.
+            BlockStateIds.Stone => 1,
+            BlockStateIds.GrassBlock => 54,
+            BlockStateIds.Dirt => 55,
+            _ => -1,
+        };
 }

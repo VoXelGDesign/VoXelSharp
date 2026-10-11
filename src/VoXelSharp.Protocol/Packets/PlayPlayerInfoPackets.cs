@@ -24,7 +24,7 @@ public enum PlayerInfoActions : byte
     UpdateListed = 0x08,
     UpdateLatency = 0x10,
     UpdateDisplayName = 0x20,
-    UpdateListPriority = 0x40,
+    UpdateListOrder = 0x40,
     UpdateHat = 0x80,
 }
 
@@ -189,11 +189,11 @@ public sealed class PlayerInfoUpdateCodec : PacketCodec<PlayerInfoUpdatePacket>
             }
         }
 
-        if (actions.HasFlag(PlayerInfoActions.UpdateListPriority))
+        if (actions.HasFlag(PlayerInfoActions.UpdateListOrder))
         {
             if (player.ListPriority is not int priority)
             {
-                throw new InvalidDataException("Update List Priority action is set but no priority was provided.");
+                throw new InvalidDataException("Update List Order action is set but no priority was provided.");
             }
 
             writer.WriteVarInt(priority);
@@ -314,7 +314,7 @@ public sealed class PlayerInfoUpdateCodec : PacketCodec<PlayerInfoUpdatePacket>
 
     private static int? ReadPriority(PlayerInfoActions actions, ref PacketReader reader)
     {
-        return actions.HasFlag(PlayerInfoActions.UpdateListPriority) ? reader.ReadVarInt() : null;
+        return actions.HasFlag(PlayerInfoActions.UpdateListOrder) ? reader.ReadVarInt() : null;
     }
 
     private static bool? ReadHat(PlayerInfoActions actions, ref PacketReader reader)
