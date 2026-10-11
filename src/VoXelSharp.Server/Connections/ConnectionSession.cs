@@ -68,6 +68,11 @@ public sealed class ConnectionSession : IDisposable
     private CancellationTokenSource? _playCts;
     private Task? _keepAliveTask;
 
+    // Block placement state: the selected hotbar slot (set_carried_item) and the creative-mode
+    // item the client has placed in each slot (set_creative_mode_slot).
+    private int _carriedSlot;
+    private readonly CreativeSlotItem[] _creativeItemBySlot = new CreativeSlotItem[9];
+
     // Serializes all writes to the transport (the keep-alive loop writes concurrently with
     // the read-loop responses).
     private readonly SemaphoreSlim _writeLock = new(1, 1);
@@ -310,16 +315,19 @@ public sealed class ConnectionSession : IDisposable
                 // Sneak/sprint/other player commands; no gameplay effect yet.
                 return false;
 
-            case SetCarriedItemPacket:
-                // Hotbar selection; nothing depends on the selected slot yet.
+            case SetCarriedItemPacket carriedItem:
+                _carriedSlot = carriedItem.Slot;
+                return false;
+
+            case SetCreativeModeSlotPacket creativeSlot:
+                _creativeItemBySlot[creativeSlot.Slot & 0xFF] = creativeSlot.Item;
                 return false;
 
             case PlayerActionPacket playerAction:
                 return await HandlePlayerActionAsync(playerAction, cancellationToken);
 
-            case UseItemOnPacket:
-                // Right-click against a block; accepted, no interaction logic yet.
-                return false;
+            case UseItemOnPacket useItemOn:
+                return await HandleUseItemOnAsync(useItemOn, cancellationToken);
 
             case UseItemPacket:
                 // Right-click using the held item; accepted, no interaction logic yet.
@@ -878,6 +886,70 @@ public sealed class ConnectionSession : IDisposable
             new BlockChangedAckPacket(action.Sequence),
             cancellationToken);
         return false;
+    }
+
+    /// <summary>
+    /// Handles creative block placement: the client right-clicked a surface (use_item_on) with
+    /// a block from its hotbar. The block is placed in the cell adjacent to the clicked face
+    /// (Location + face normal, 26.3 Direction data values), validated for interaction range and
+    /// world bounds, then broadcast via block_update and acknowledged with block_changed_ack.
+    /// One-hotbar selection (set_carried_item) + creative slots (set_creative_mode_slot) decide
+    /// what is held; unknown/empty items are ignored (connection stays alive).
+    /// </summary>
+    private async Task<bool> HandleUseItemOnAsync(UseItemOnPacket useItemOn, CancellationToken cancellationToken)
+    {
+        EnsurePlayerMoveIsInPlay();
+
+        var target = TargetCellFor(useItemOn);
+        int blockStateId = CreativeBlockCatalog.BlockStateIdForItem(HeldItemId());
+        if (blockStateId >= 0
+            && _player is not null
+            && PlayerMovementValidator.IsWithinInteractionRange(_player, target.X, target.Y, target.Z)
+            && _world.GetBlock(target.X, target.Y, target.Z) == BlockStateIds.Air)
+        {
+            _world.SetBlock(target.X, target.Y, target.Z, blockStateId);
+            await SendAsync(
+                BlockUpdateCodec.Instance,
+                new BlockUpdatePacket(target, blockStateId),
+                cancellationToken);
+        }
+
+        // Acknowledge the placement sequence (block_changed_ack).
+        await SendAsync(
+            BlockChangedAckCodec.Instance,
+            new BlockChangedAckPacket(useItemOn.Sequence),
+            cancellationToken);
+        return false;
+    }
+
+    /// <summary>The item registry ID held in the selected hotbar slot, or -1 when empty.</summary>
+    private int HeldItemId()
+    {
+        CreativeSlotItem? held = _creativeItemBySlot[_carriedSlot & 0xFF];
+        return held is not null && !held.IsEmpty ? held.ItemId : -1;
+    }
+
+    /// <summary>
+    /// The cell the placed block goes in: the clicked block's location offset by the clicked
+    /// face's normal (Direction data value 0=down, 1=up, 2=north, 3=south, 4=west, 5=east).
+    /// Verified from the 26.3 client <c>Direction</c> enum.
+    /// </summary>
+    private static BlockPosition TargetCellFor(UseItemOnPacket useItemOn)
+    {
+        int face = useItemOn.Face;
+        int dx = 0, dy = 0, dz = 0;
+        switch (face)
+        {
+            case 0: dy = -1; break; // down
+            case 1: dy = 1; break;  // up
+            case 2: dz = -1; break; // north
+            case 3: dz = 1; break;  // south
+            case 4: dx = -1; break; // west
+            case 5: dx = 1; break;  // east
+            default: break;
+        }
+
+        return new BlockPosition(useItemOn.Location.X + dx, useItemOn.Location.Y + dy, useItemOn.Location.Z + dz);
     }
 
     private bool HandlePlayKeepAlive(PlayKeepAlivePacket keepAlive)

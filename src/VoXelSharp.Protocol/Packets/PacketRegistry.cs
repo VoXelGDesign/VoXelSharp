@@ -83,6 +83,7 @@ public sealed class PacketRegistry
         registry.Register(GameEventCodec.Instance);
         registry.Register(BlockUpdateCodec.Instance);
         registry.Register(BlockChangedAckCodec.Instance);
+        registry.Register(SetCreativeModeSlotCodec.Instance);
         return registry;
     }
 

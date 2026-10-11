@@ -523,6 +523,63 @@ public class ConnectionSessionTests
     }
 
     [Fact]
+    public async Task UseItemOnPlacesBlockFromCarriedSlot()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // The creative client puts stone (item id 1) into hotbar slot 0 and selects it.
+        await harness.ClientSendAsync(
+            SetCreativeModeSlotCodec.Instance,
+            new SetCreativeModeSlotPacket(0, new CreativeSlotItem(1, 1, [])));
+        await harness.ClientSendAsync(SetCarriedItemCodec.Instance, new SetCarriedItemPacket(0));
+
+        // Right-click the grass surface at (0, -61, 0) on its UP face (face 1 = up):
+        // the stone is placed at (0, -60, 0) (Location + normal(up)).
+        await harness.ClientSendAsync(
+            UseItemOnCodec.Instance,
+            new UseItemOnPacket(0, new BlockPosition(0, -61, 0), face: 1, 0.5f, 0.5f, 0.5f, false, false, sequence: 3));
+
+        // Block Update (id 8) with the placed state, then Block Changed Ack (id 4).
+        var update = Assert.IsType<BlockUpdatePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(new BlockPosition(0, -60, 0), update.Location);
+        Assert.Equal(BlockStateIds.Stone, update.BlockStateId);
+
+        var ack = Assert.IsType<BlockChangedAckPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(3, ack.Sequence);
+
+        await WaitUntilAsync(() => harness.World.GetBlock(0, -60, 0) == BlockStateIds.Stone);
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task UseItemOnWithEmptyItemDoesNotPlace()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // No item in the carried slot: right-clicking must not place anything, only ack.
+        await harness.ClientSendAsync(
+            UseItemOnCodec.Instance,
+            new UseItemOnPacket(0, new BlockPosition(0, -61, 0), face: 1, 0.5f, 0.5f, 0.5f, false, false, sequence: 7));
+
+        var ack = Assert.IsType<BlockChangedAckPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(7, ack.Sequence);
+
+        Assert.Equal(BlockStateIds.Air, harness.World.GetBlock(0, -60, 0));
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
     public async Task ClientBrandDoesNotDisconnectSession()
     {
         await using var harness = new SessionHarness();
