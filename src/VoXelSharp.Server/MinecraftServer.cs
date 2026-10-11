@@ -47,6 +47,7 @@ public sealed class MinecraftServer : IAsyncDisposable
     private readonly IStatusJsonProvider _statusJson;
     private readonly IConfigurationDataProvider _configurationData;
     private readonly ILogger _logger;
+    private readonly ServerTickLoop _tickLoop = new();
     private Task? _acceptTask;
     private bool _started;
     private int _nextEntityId;
@@ -86,6 +87,7 @@ public sealed class MinecraftServer : IAsyncDisposable
 
         _started = true;
         _listener.Start();
+        _tickLoop.Start();
         _listening(_logger, _port, null);
         _acceptTask = Task.Run(AcceptLoopAsync);
     }
@@ -127,6 +129,8 @@ public sealed class MinecraftServer : IAsyncDisposable
             }
         }
 
+        await _tickLoop.StopAsync();
+
         _stopped(_logger, null);
     }
 
@@ -163,7 +167,7 @@ public sealed class MinecraftServer : IAsyncDisposable
                 var stateMachine = new ConnectionStateMachine();
                 int entityId = Interlocked.Increment(ref _nextEntityId);
                 var playData = new ServerPlayDataProvider(entityId);
-                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _logger);
+                using var session = new ConnectionSession(pipe, _registry, stateMachine, _statusJson, _configurationData, playData, _logger, getTick: _tickLoop.GetCurrentTick);
 
                 await session.RunAsync(_stoppingCts.Token);
             }

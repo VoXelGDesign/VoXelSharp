@@ -54,10 +54,13 @@ public sealed class ConnectionSession : IDisposable
     private readonly IPlayDataProvider _playData;
     private readonly ILogger _logger;
     private readonly TimeSpan _keepAliveInterval;
+    private readonly Func<long> _getTick;
+    private long _fallbackTick;
     private ConfigurationStage _configurationStage = ConfigurationStage.None;
 
     // Play session state, set once the session reaches Play.
     private GameProfile? _playerProfile;
+    private Player? _player;
     private int _nextTeleportId = 1;
     private int _lastIssuedTeleportId;
     private int _nextKeepAliveId = 1;
@@ -83,6 +86,7 @@ public sealed class ConnectionSession : IDisposable
     /// <param name="playData">Provides the world/chunk data sent once the session reaches Play.</param>
     /// <param name="logger">Logger for this session.</param>
     /// <param name="keepAliveInterval">Interval between Play Keep Alive packets (default 15s).</param>
+    /// <param name="getTick">Provides the current server tick for movement timestamps; defaults to a per-session counter when the server tick loop is not wired in.</param>
     /// <exception cref="ArgumentNullException">Thrown when any argument is null.</exception>
     public ConnectionSession(
         IDuplexPipe transport,
@@ -92,7 +96,8 @@ public sealed class ConnectionSession : IDisposable
         IConfigurationDataProvider configurationData,
         IPlayDataProvider playData,
         ILogger logger,
-        TimeSpan? keepAliveInterval = null)
+        TimeSpan? keepAliveInterval = null,
+        Func<long>? getTick = null)
     {
         ArgumentNullException.ThrowIfNull(transport);
         ArgumentNullException.ThrowIfNull(registry);
@@ -110,12 +115,14 @@ public sealed class ConnectionSession : IDisposable
         _playData = playData;
         _logger = logger;
         _keepAliveInterval = keepAliveInterval ?? TimeSpan.FromSeconds(15);
+        _getTick = getTick ?? (() => Interlocked.Increment(ref _fallbackTick));
         _buffer = new byte[1024];
     }
 
-    /// <summary>
-    /// Runs the session until the connection closes, is cancelled, or a protocol violation occurs.
-    /// </summary>
+    /// <summary>The server-side player state for this connection, or <see langword="null"/> before Login Start.</summary>
+    public Player? Player => _player;
+
+    /// <summary>Runs the session until the connection closes, is cancelled, or a protocol violation occurs.</summary>
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         try
@@ -419,6 +426,9 @@ public sealed class ConnectionSession : IDisposable
             loginStart.Name,
             []);
 
+        _player = new Player(_playData.PlayerEntityId);
+        _player.SetProfile(_playerProfile);
+
         // Session ID is not yet meaningful here; echo the player's UUID.
         await SendAsync(
             LoginSuccessCodec.Instance,
@@ -585,6 +595,10 @@ public sealed class ConnectionSession : IDisposable
                 TeleportFlags.None),
             cancellationToken);
 
+        // Seed the authoritative server-side player position at the spawn point; from now on
+        // move_player packets update this state (feet Y, per the 26.3 move packet).
+        _player?.SetPosition(_playData.SpawnX, _playData.SpawnY, _playData.SpawnZ, 0f, 0f);
+
         // Start the periodic keep-alive loop for the lifetime of this Play session.
         _playCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _keepAliveTask = Task.Run(() => KeepAliveLoopAsync(_playCts.Token), _playCts.Token);
@@ -727,6 +741,11 @@ public sealed class ConnectionSession : IDisposable
     {
         EnsurePlayerMoveIsInPlay();
         ValidatePosition(move.X, move.FeetY, move.Z);
+        _player?.ApplyPosition(
+            move.X, move.FeetY, move.Z,
+            onGround: (move.Flags & 0x01) != 0,
+            horizontalCollision: (move.Flags & 0x02) != 0,
+            tick: _getTick());
         return false;
     }
 
@@ -734,18 +753,32 @@ public sealed class ConnectionSession : IDisposable
     {
         EnsurePlayerMoveIsInPlay();
         ValidatePosition(move.X, move.FeetY, move.Z);
+        _player?.ApplyPosition(
+            move.X, move.FeetY, move.Z,
+            onGround: (move.Flags & 0x01) != 0,
+            horizontalCollision: (move.Flags & 0x02) != 0,
+            tick: _getTick());
         return false;
     }
 
     private bool HandlePlayerMove(SetPlayerRotationPacket move)
     {
         EnsurePlayerMoveIsInPlay();
+        _player?.ApplyRotation(
+            move.Yaw, move.Pitch,
+            onGround: (move.Flags & 0x01) != 0,
+            horizontalCollision: (move.Flags & 0x02) != 0,
+            tick: _getTick());
         return false;
     }
 
     private bool HandlePlayerMove(SetPlayerStatusOnlyPacket move)
     {
         EnsurePlayerMoveIsInPlay();
+        _player?.ApplyStatus(
+            onGround: (move.Flags & 0x01) != 0,
+            horizontalCollision: (move.Flags & 0x02) != 0,
+            tick: _getTick());
         return false;
     }
 

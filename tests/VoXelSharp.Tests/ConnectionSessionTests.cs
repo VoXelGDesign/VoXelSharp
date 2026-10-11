@@ -333,6 +333,58 @@ public class ConnectionSessionTests
     }
 
     [Fact]
+    public async Task MovePlayerPacketsUpdateAuthoritativePlayerState()
+    {
+        long tick = 100;
+        await using var harness = new SessionHarness(getTick: () => tick++);
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // set_carried_item is not involved here; use the four move variants:
+        // move_player_pos, move_player_pos_rot, move_player_rot, move_player_status_only.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(1.5, -60.0, 2.5, flags: 0x01)); // on ground, no wall
+        await harness.ClientSendAsync(
+            SetPlayerPositionAndRotationCodec.Instance,
+            new SetPlayerPositionAndRotationPacket(3.0, -60.0, 4.0, 90.0f, -5.0f, flags: 0x01));
+        await harness.ClientSendAsync(
+            SetPlayerRotationCodec.Instance,
+            new SetPlayerRotationPacket(180.0f, 10.0f, flags: 0x00)); // airborne, not on ground
+        await harness.ClientSendAsync(
+            SetPlayerStatusOnlyCodec.Instance,
+            new SetPlayerStatusOnlyPacket(flags: 0x03)); // on ground + wall collision
+
+        // The session applies moves asynchronously; poll until the last move is observed.
+        Player? player = harness.Session.Player;
+        Assert.NotNull(player);
+        Assert.Equal(1, player.EntityId);
+        Assert.Equal("Player1", player.Profile!.Username);
+
+        await WaitUntilAsync(() => player.LastMoveTick == 103);
+
+        Assert.Equal(3.0, player.X);
+        Assert.Equal(-60.0, player.FeetY);
+        Assert.Equal(4.0, player.Z);
+        Assert.Equal(180.0f, player.Yaw);
+        Assert.Equal(10.0f, player.Pitch);
+        Assert.True(player.OnGround);
+        Assert.True(player.HorizontalCollision);
+        Assert.Equal(103, player.LastMoveTick);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "Condition not met within the timeout.");
+            await Task.Delay(10);
+        }
+    }
+
+    [Fact]
     public async Task ClientBrandDoesNotDisconnectSession()
     {
         await using var harness = new SessionHarness();
@@ -519,14 +571,15 @@ public class ConnectionSessionTests
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _sessionTask;
         private readonly ConnectionStateMachine _stateMachine;
+        private readonly ConnectionSession _session;
         private byte[] _received = new byte[4096];
         private int _receivedCount;
 
-        public SessionHarness(TimeSpan? keepAliveInterval = null)
+        public SessionHarness(TimeSpan? keepAliveInterval = null, Func<long>? getTick = null)
         {
             var serverTransport = new DuplexPipe(_clientToServer.Reader, _serverToClient.Writer);
             _stateMachine = new ConnectionStateMachine();
-            var session = new ConnectionSession(
+            _session = new ConnectionSession(
                 serverTransport,
                 PacketRegistry.CreateDefault(),
                 _stateMachine,
@@ -534,9 +587,13 @@ public class ConnectionSessionTests
                 new ServerConfigurationDataProvider(),
                 new ServerPlayDataProvider(playerEntityId: 1),
                 NullLogger<ConnectionSession>.Instance,
-                keepAliveInterval);
-            _sessionTask = session.RunAsync(_cts.Token);
+                keepAliveInterval,
+                getTick);
+            _sessionTask = _session.RunAsync(_cts.Token);
         }
+
+        /// <summary>The live session, for asserting server-side player state.</summary>
+        public ConnectionSession Session => _session;
 
         public async Task ClientSendAsync<TPacket>(PacketCodec<TPacket> codec, TPacket packet)
             where TPacket : IPacket
