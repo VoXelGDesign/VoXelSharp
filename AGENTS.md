@@ -20,7 +20,7 @@ pitfalls (networking API, analyzer rules, data gaps).
 
 ## Repository Layout
 
-VoXelSharp/ ├── src/ │ ├── VoXelSharp.Server/ │ ├── VoXelSharp.Protocol/ │ ├── VoXelSharp.World/ │ └── VoXelSharp.PluginApi/ ├── tests/ │ └── VoXelSharp.Tests/ ├── docs/ │ ├── PROTOCOL.md │ ├── ARCHITECTURE.md │ ├── ROADMAP.md │ ├── TROUBLESHOOTING.md │ └── data/ ├── Dockerfile ├── docker-compose.yml ├── Directory.Build.props ├── Directory.Build.targets ├── Directory.Packages.props ├── global.json ├── .editorconfig ├── .gitignore ├── opencode.jsonc └── VoXelSharp.slnx
+VoXelSharp/ ├── src/ │ ├── VoXelSharp.Server/ │ ├── VoXelSharp.Protocol/ │ ├── VoXelSharp.World/ │ └── VoXelSharp.PluginApi/ ├── tests/ │ └── VoXelSharp.Tests/ ├── docs/ │ ├── PROTOCOL.md │ ├── ARCHITECTURE.md │ ├── ROADMAP.md │ ├── TROUBLESHOOTING.md │ └── data/ ├── vanilla/ │ └── decompiled-26.3/  (gitignored; CFR output of the official 26.3 client) ├── .opencode/agents/  (subagent definitions) ├── Dockerfile ├── docker-compose.yml ├── Directory.Build.props ├── Directory.Build.targets ├── Directory.Packages.props ├── global.json ├── .editorconfig ├── .gitignore ├── opencode.jsonc └── VoXelSharp.slnx
 
 
 ---
@@ -53,6 +53,28 @@ Instead state:
 `UNVERIFIED: <exact fact required>`
 
 and stop that portion of the task.
+
+### 1a. When wiki data is stale, decompile the 26.3 client
+
+The Minecraft Wiki and derived `docs/data/` captures are stale for 26.3 in places
+(resolved examples: `ByteBufCodecs.BIT_SET` byte-length form, the three heightmaps,
+`LEVEL_CHUNKS_LOAD_START` game event 13, HashedStack container_click payloads, and
+the fact that serverbound `acknowledge_block_changes` does not exist in 26.3).
+
+When docs and bytecode disagree, the **official 26.3 client bytecode is the ground
+truth**. Workflow:
+
+1. Client jar: `%APPDATA%\.minecraft\versions\26.3\26.3.jar`.
+2. Decompile with CFR 0.152; locate Java by recursive search under
+   `C:\Program Files\Eclipse Adoptium` (the JDK directory name is environment-specific).
+   Decompiled output goes under `vanilla/decompiled-26.3/` (gitignored reference).
+   Ask the `decompiler` subagent to do this and produce the spec.
+3. The authoritative wire format of a packet is its `STREAM_CODEC` (field order and
+   types). Composite types live in `net.minecraft.network.codec.ByteBufCodecs`.
+4. When facts disagree, update the wiki-derived docs to match the bytecode and note
+   the correction with a `_Source:` provenance line.
+
+Full procedure: `docs/TROUBLESHOOTING.md` → "Decompiling the 26.3 client as ground truth".
 
 ---
 
@@ -417,14 +439,16 @@ docs/data/
 
 is authoritative generated protocol data.
 
-Expected files include:
+Present files (26.3 / protocol 777):
 
-docs/data/packets.json docs/data/registries.json docs/data/blocks.json
+docs/data/packets.json docs/data/registries.json docs/data/blocks.json docs/data/wire_types.md docs/data/chunk_format.md docs/data/SCHEMA.md
 
 
 Do not fabricate these files.
 
-If they do not exist, packet implementation beyond protocol-independent primitives is blocked.
+If a required fact is not present, resolve it from the official 26.3 client
+bytecode (rule 1a) and record it in the docs; otherwise implementation of that
+portion is blocked.
 
 ---
 
