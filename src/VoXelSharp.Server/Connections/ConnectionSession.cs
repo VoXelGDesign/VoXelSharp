@@ -2,6 +2,7 @@ using System.Buffers;
 using System.IO.Pipelines;
 using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Chunk;
+using VoXelSharp.Protocol.Nbt;
 using VoXelSharp.Protocol.Packets;
 using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Play;
@@ -380,6 +381,22 @@ public sealed class ConnectionSession : IDisposable
 
             case PlayPongPacket:
                 // Response to a future clientbound Ping; accepted and ignored for now.
+                return false;
+
+            case ServerboundChatPacket chat:
+                return await HandleChatAsync(chat, cancellationToken);
+
+            case ServerboundChatAckPacket:
+                // The client acks messages it has received; nothing tracks ack offsets yet.
+                return false;
+
+            case ServerboundChatCommandPacket:
+            case ServerboundChatCommandSignedPacket:
+                // Client-side commands are not implemented yet; accepted to stay connected.
+                return false;
+
+            case ServerboundChatSessionUpdatePacket:
+                // The client announces its chat session; the key material is not used in this milestone.
                 return false;
 
             case PluginMessagePacket pluginMessage:
@@ -950,6 +967,24 @@ public sealed class ConnectionSession : IDisposable
         }
 
         return new BlockPosition(useItemOn.Location.X + dx, useItemOn.Location.Y + dy, useItemOn.Location.Z + dz);
+    }
+
+    /// <summary>
+    /// Echoes a chat message back to the player as a System Chat (clientbound, id 124) using a
+    /// plain-text NBT component, so the player "sees chat" (ROADMAP M5). In this milestone there is
+    /// a single player, so the message is returned to the sender; a later milestone broadcasts to
+    /// all sessions. The signed-chat signature is deliberately not validated.
+    /// </summary>
+    private async Task<bool> HandleChatAsync(ServerboundChatPacket chat, CancellationToken cancellationToken)
+    {
+        EnsurePlayerMoveIsInPlay();
+
+        string author = _player?.Profile?.Username ?? "Player";
+        await SendAsync(
+            SystemChatCodec.Instance,
+            new SystemChatPacket(new NbtString($"{author}: {chat.Message}"), overlay: false),
+            cancellationToken);
+        return false;
     }
 
     private bool HandlePlayKeepAlive(PlayKeepAlivePacket keepAlive)

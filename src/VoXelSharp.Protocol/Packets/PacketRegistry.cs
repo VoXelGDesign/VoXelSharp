@@ -84,6 +84,11 @@ public sealed class PacketRegistry
         registry.Register(BlockUpdateCodec.Instance);
         registry.Register(BlockChangedAckCodec.Instance);
         registry.Register(SetCreativeModeSlotCodec.Instance);
+        registry.Register(ServerboundChatCodec.Instance);
+        registry.Register(ServerboundChatAckCodec.Instance);
+        registry.Register(ServerboundChatCommandCodec.Instance);
+        registry.Register(ServerboundChatCommandSignedCodec.Instance);
+        registry.Register(ServerboundChatSessionUpdateCodec.Instance);
         return registry;
     }
 

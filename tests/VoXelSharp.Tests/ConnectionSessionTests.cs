@@ -2,6 +2,7 @@ using System.Buffers;
 using System.IO.Pipelines;
 using Microsoft.Extensions.Logging.Abstractions;
 using VoXelSharp.Protocol;
+using VoXelSharp.Protocol.Nbt;
 using VoXelSharp.Protocol.Packets;
 using VoXelSharp.Server.Configuration;
 using VoXelSharp.Server.Connections;
@@ -575,6 +576,34 @@ public class ConnectionSessionTests
         Assert.Equal(7, ack.Sequence);
 
         Assert.Equal(BlockStateIds.Air, harness.World.GetBlock(0, -60, 0));
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task ChatMessageIsEchoedBackAsSystemChat()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        await harness.ClientSendAsync(
+            ServerboundChatCodec.Instance,
+            new ServerboundChatPacket(
+                "hello from player",
+                0,
+                0,
+                null,
+                new LastSeenMessageUpdate(0, [], 0x00)));
+
+        // The server echoes the message back as System Chat (clientbound id 124).
+        byte[] payload = await harness.ReadServerFrameAsync();
+        var echo = Assert.IsType<SystemChatPacket>(registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, payload));
+
+        var text = Assert.IsType<NbtString>(echo.Content);
+        Assert.True(text.Value.Contains("hello from player"), $"Echo did not include the message: {text.Value}");
+
         await harness.AssertStateAsync(ConnectionState.Play);
         await harness.AssertSessionOpenAsync();
     }
