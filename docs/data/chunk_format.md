@@ -105,15 +105,24 @@ registry entry). Sections are sent **bottom-to-top**. The vanilla overworld is 3
 
 Used by both Chunk Data and Update Light and Update Light.
 
-| Field                     | Type                                                    |
-|---------------------------|---------------------------------------------------------|
-| Sky Light Mask            | BitSet (1 bit per section, world height + 2)            |
-| Block Light Mask          | BitSet                                                  |
-| Empty Sky Light Mask      | BitSet                                                  |
-| Empty Block Light Mask    | BitSet                                                  |
-| Sky Light arrays          | Prefixed Array of Prefixed Array (2048) of Byte          |
-| Block Light arrays        | Prefixed Array of Prefixed Array (2048) of Byte          |
+| Field                     | Type                                                   |
+|---------------------------|--------------------------------------------------------|
+| Sky Light Mask            | BitSet (1 bit per section, world height + 2)           |
+| Block Light Mask          | BitSet                                                 |
+| Empty Sky Light Mask      | BitSet                                                 |
+| Empty Block Light Mask    | BitSet                                                 |
+| Sky Light arrays          | Prefixed Array of Prefixed Array (2048) of Byte        |
+| Block Light arrays        | Prefixed Array of Prefixed Array (2048) of Byte        |
 
 Each inner light array is always 2048 bytes (half byte per light value). The least significant
 bit corresponds to the section 16 blocks below the world minimum; the most significant bit
 covers 16 blocks above the maximum.
+
+- The four masks use the 26.3 BitSet wire format (VarInt length in **bytes**, then
+  `java.util.BitSet` little-endian bytes), NOT the long-count form — see wire_types.md "BitSet".
+- A section appears in exactly one mask set: the non-empty mask when it has light data (an array
+  is then sent in the same order as ascending set bits), the empty masks when its data layer is
+  all-zero, and in neither mask when the section has no data at all (e.g. the sections below and
+  above the world). The number of arrays must equal the number of set bits in the matching mask.
+- Verified against the 26.3 client (`ClientboundLightUpdatePacketData.STREAM_CODEC`,
+  `ByteBufCodecs.BIT_SET`) and Pumpkin `light.rs` for the "no data below/above world" behavior.
