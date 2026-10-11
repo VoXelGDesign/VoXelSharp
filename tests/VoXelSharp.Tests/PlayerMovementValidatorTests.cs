@@ -98,4 +98,39 @@ public class PlayerMovementValidatorTests
         var player = CreatePlayerAt(0, 0, 0);
         Assert.True(PlayerMovementValidator.IsMoveAllowed(player, 3.0, 64.0, 4.0, currentTick: 1));
     }
+
+    // ---- Interaction distance ----
+
+    [Fact]
+    public void AdjacentBlockIsWithinInteractionRange()
+    {
+        // Player at (0.5, 0.5, 0.5) feet; block centre (1.5, 0.5, 0.5) is 1 block away.
+        var player = CreatePlayerAt(0.5, 0.5, 0.5);
+        Assert.True(PlayerMovementValidator.IsWithinInteractionRange(player, 1, 0, 0));
+    }
+
+    [Fact]
+    public void DistantBlockIsOutsideInteractionRange()
+    {
+        // Player at (0.5, 0.5, 0.5); block centre (10.5, 0.5, 0.5) is 10 blocks away.
+        var player = CreatePlayerAt(0.5, 0.5, 0.5);
+        Assert.False(PlayerMovementValidator.IsWithinInteractionRange(player, 10, 0, 0));
+    }
+
+    [Fact]
+    public void VerticalDistanceCountsAgainstInteractionRange()
+    {
+        // Player at (0.5, 0.5, 0.5); block centre 10 blocks above is out of range.
+        var player = CreatePlayerAt(0.5, 0.5, 0.5);
+        Assert.False(PlayerMovementValidator.IsWithinInteractionRange(player, 0, 10, 0));
+    }
+
+    [Fact]
+    public void BlockAtMaximumInteractionDistanceIsAllowed()
+    {
+        var player = CreatePlayerAt(0.5, 0.5, 0.5);
+        // Exactly 6 blocks to the centre: squared distance == 36, allowed (inclusive).
+        double d = PlayerMovementValidator.MaxInteractionDistance;
+        Assert.True(PlayerMovementValidator.IsWithinInteractionRange(player, (int)Math.Floor(d), 0, 0));
+    }
 }

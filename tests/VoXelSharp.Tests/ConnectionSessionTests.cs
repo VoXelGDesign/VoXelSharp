@@ -445,6 +445,84 @@ public class ConnectionSessionTests
     }
 
     [Fact]
+    public async Task StopDestroyBlockBreaksBlockAndBroadcastsUpdate()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Move the player next to the grass block at (0, -61, 0) so it is within interaction range.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -60.0, 0.5, flags: 0x01));
+
+        // The client finishes digging: player_action STOP_DESTROY_BLOCK (status 3) at that block.
+        await harness.ClientSendAsync(
+            PlayerActionCodec.Instance,
+            new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 5));
+
+        // Block Update (id 8) then Block Changed Ack (id 4) are sent.
+        var update = Assert.IsType<BlockUpdatePacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(new BlockPosition(0, -61, 0), update.Location);
+        Assert.Equal(BlockStateIds.Air, update.BlockStateId);
+
+        var ack = Assert.IsType<BlockChangedAckPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(5, ack.Sequence);
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task StopDestroyBlockTooFarDoesNotBreakBlock()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Player stays at spawn (0.5, -60, 0.5); tries to break a block 10 blocks away.
+        await harness.ClientSendAsync(
+            PlayerActionCodec.Instance,
+            new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(10, -61, 0), face: 3, sequence: 9));
+
+        // Only the ack is sent; there is no Block Update because the interaction was rejected.
+        var ack = Assert.IsType<BlockChangedAckPacket>(
+            registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await harness.ReadServerFrameAsync()));
+        Assert.Equal(9, ack.Sequence);
+
+        await harness.AssertStateAsync(ConnectionState.Play);
+        await harness.AssertSessionOpenAsync();
+    }
+
+    [Fact]
+    public async Task BreakingGrassBlockChangesWorldState()
+    {
+        await using var harness = new SessionHarness();
+        PacketRegistry registry = PacketRegistry.CreateDefault();
+
+        await StartPlayAsync(harness, registry);
+
+        // Break the grass block at (0, -61, 0) after moving next to it.
+        await harness.ClientSendAsync(
+            SetPlayerPositionCodec.Instance,
+            new SetPlayerPositionPacket(0.5, -60.0, 0.5, flags: 0x01));
+        await harness.ClientSendAsync(
+            PlayerActionCodec.Instance,
+            new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 1));
+        await harness.ReadServerFrameAsync(); // Block Update
+        await harness.ReadServerFrameAsync(); // Block Changed Ack
+
+        // The shared world now has air in that cell, and the layer above stays unchanged.
+        await WaitUntilAsync(() => harness.World.GetBlock(0, -61, 0) == BlockStateIds.Air);
+        Assert.Equal(BlockStateIds.Air, harness.World.GetBlock(0, -61, 0));
+        Assert.Equal(BlockStateIds.Air, harness.World.GetBlock(0, -60, 0));
+    }
+
+    [Fact]
     public async Task ClientBrandDoesNotDisconnectSession()
     {
         await using var harness = new SessionHarness();
@@ -632,6 +710,7 @@ public class ConnectionSessionTests
         private readonly Task _sessionTask;
         private readonly ConnectionStateMachine _stateMachine;
         private readonly ConnectionSession _session;
+        private readonly FlatWorld _world = new();
         private byte[] _received = new byte[4096];
         private int _receivedCount;
 
@@ -646,7 +725,7 @@ public class ConnectionSessionTests
                 new ServerStatusJsonProvider(new ServerStatusData("A Minecraft Server", 20, 0)),
                 new ServerConfigurationDataProvider(),
                 new ServerPlayDataProvider(playerEntityId: 1),
-                new FlatWorld(),
+                _world,
                 NullLogger<ConnectionSession>.Instance,
                 keepAliveInterval,
                 getTick);
@@ -655,6 +734,9 @@ public class ConnectionSessionTests
 
         /// <summary>The live session, for asserting server-side player state.</summary>
         public ConnectionSession Session => _session;
+
+        /// <summary>The shared world passed to the session, for asserting block mutations.</summary>
+        public FlatWorld World => _world;
 
         public async Task ClientSendAsync<TPacket>(PacketCodec<TPacket> codec, TPacket packet)
             where TPacket : IPacket

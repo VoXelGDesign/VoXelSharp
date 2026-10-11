@@ -82,6 +82,7 @@ public sealed class PacketRegistry
         registry.Register(PlayClientboundPluginMessageCodec.Instance);
         registry.Register(GameEventCodec.Instance);
         registry.Register(BlockUpdateCodec.Instance);
+        registry.Register(BlockChangedAckCodec.Instance);
         return registry;
     }
 

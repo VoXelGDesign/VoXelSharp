@@ -445,6 +445,33 @@ public sealed class PlayerActionPacket : IPacket
     /// <summary>Valid status range from the 26.3 client enum (0..8).</summary>
     public const int MaxStatusId = 8;
 
+    /// <summary>Started destroying the block at Location (client enum START_DESTROY_BLOCK).</summary>
+    public const int StartDestroyBlock = 0;
+
+    /// <summary>The player changed the face being dug (CHANGE_DESTROY_DIRECTION).</summary>
+    public const int ChangeDestroyDirection = 1;
+
+    /// <summary>Canceled/did not complete digging (ABORT_DESTROY_BLOCK).</summary>
+    public const int AbortDestroyBlock = 2;
+
+    /// <summary>Finished digging; the block should be broken (STOP_DESTROY_BLOCK).</summary>
+    public const int StopDestroyBlock = 3;
+
+    /// <summary>Dropped the entire held stack (DROP_ALL_ITEMS).</summary>
+    public const int DropAllItems = 4;
+
+    /// <summary>Dropped one item (DROP_ITEM).</summary>
+    public const int DropItem = 5;
+
+    /// <summary>Released the use-item button (RELEASE_USE_ITEM).</summary>
+    public const int ReleaseUseItem = 6;
+
+    /// <summary>Swapped the held item to the offhand (SWAP_ITEM_WITH_OFFHAND).</summary>
+    public const int SwapItemWithOffhand = 7;
+
+    /// <summary>Lunge/attack in the air (STAB).</summary>
+    public const int Stab = 8;
+
     /// <summary>Valid face range (0..5, one per axis direction).</summary>
     public const int MinFace = 0;
 

@@ -314,9 +314,8 @@ public sealed class ConnectionSession : IDisposable
                 // Hotbar selection; nothing depends on the selected slot yet.
                 return false;
 
-            case PlayerActionPacket:
-                // Digging/dropping actions; accepted, no block changes are applied yet.
-                return false;
+            case PlayerActionPacket playerAction:
+                return await HandlePlayerActionAsync(playerAction, cancellationToken);
 
             case UseItemOnPacket:
                 // Right-click against a block; accepted, no interaction logic yet.
@@ -849,6 +848,36 @@ public sealed class ConnectionSession : IDisposable
         {
             throw new InvalidDataException("Player position contains a non-finite value.");
         }
+    }
+
+    private async Task<bool> HandlePlayerActionAsync(PlayerActionPacket action, CancellationToken cancellationToken)
+    {
+        EnsurePlayerMoveIsInPlay();
+
+        // The block is broken when the client reports it finished digging
+        // (player_action STOP_DESTROY_BLOCK). Requires the interaction distance to be valid.
+        if (action.Status == PlayerActionPacket.StopDestroyBlock
+            && _player is not null
+            && PlayerMovementValidator.IsWithinInteractionRange(_player, action.Location.X, action.Location.Y, action.Location.Z))
+        {
+            int blockStateId = _world.GetBlock(action.Location.X, action.Location.Y, action.Location.Z);
+            if (blockStateId != BlockStateIds.Air)
+            {
+                _world.SetBlock(action.Location.X, action.Location.Y, action.Location.Z, BlockStateIds.Air);
+                await SendAsync(
+                    BlockUpdateCodec.Instance,
+                    new BlockUpdatePacket(action.Location, BlockStateIds.Air),
+                    cancellationToken);
+            }
+        }
+
+        // Acknowledge the action's sequence so the client stops its block-break animation
+        // (26.3 ClientboundBlockChangedAckPacket, docs/data/packets.json block_changed_ack).
+        await SendAsync(
+            BlockChangedAckCodec.Instance,
+            new BlockChangedAckPacket(action.Sequence),
+            cancellationToken);
+        return false;
     }
 
     private bool HandlePlayKeepAlive(PlayKeepAlivePacket keepAlive)

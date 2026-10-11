@@ -43,6 +43,13 @@ public static class PlayerMovementValidator
     public const double MaxHorizontalSpeedPerTick = 5;
 
     /// <summary>
+    /// Maximum player-to-block-centre distance for block breaking/placing, in blocks.
+    /// Matches the vanilla server's MAX_INTERACTION_DISTANCE (docs/ROADMAP.md M5 Security:
+    /// "invalid interaction distances").
+    /// </summary>
+    public const double MaxInteractionDistance = 6;
+
+    /// <summary>
     /// Returns whether a move to (<paramref name="x"/>, <paramref name="y"/>, <paramref name="z"/>)
     /// is plausible given the player's last applied position and the tick it was applied on.
     /// </summary>
@@ -85,4 +92,19 @@ public static class PlayerMovementValidator
            && y <= MaxFeetY
            && Math.Abs(x) <= WorldBorder
            && Math.Abs(z) <= WorldBorder;
+
+    /// <summary>
+    /// Returns whether the player is within <see cref="MaxInteractionDistance"/> (squared) of the
+    /// given block position. The player's feet position is allowed to be up to one block away from
+    /// the target block face, so the check compares the player's feet against the block centre.
+    /// </summary>
+    public static bool IsWithinInteractionRange(Player player, int blockX, int blockY, int blockZ)
+    {
+        ArgumentNullException.ThrowIfNull(player);
+
+        double dx = player.X - (blockX + 0.5);
+        double dy = player.FeetY - (blockY + 0.5);
+        double dz = player.Z - (blockZ + 0.5);
+        return (dx * dx) + (dy * dy) + (dz * dz) <= MaxInteractionDistance * MaxInteractionDistance;
+    }
 }
