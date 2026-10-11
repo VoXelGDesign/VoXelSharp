@@ -16,8 +16,7 @@ public class SystemChatPacketTests
 
         SystemChatCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SystemChatPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SystemChatPacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal("Hello, world!", Assert.IsType<NbtString>(decoded.Content).Value);
         Assert.False(decoded.Overlay);
@@ -36,8 +35,7 @@ public class SystemChatPacketTests
 
         SystemChatCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SystemChatPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SystemChatPacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         var content = Assert.IsType<NbtCompound>(decoded.Content);
         Assert.Equal("Bold hello", Assert.IsType<NbtString>(content.Tags[0].Value).Value);
@@ -61,8 +59,7 @@ public class SystemChatPacketTests
 
         writer.Writer.WriteBoolean(false);
 
-        var decoded = Assert.IsType<SystemChatPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SystemChatPacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal("Hello", Assert.IsType<NbtString>(decoded.Content).Value);
         Assert.False(decoded.Overlay);
@@ -76,8 +73,7 @@ public class SystemChatPacketTests
 
         SystemChatCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SystemChatPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SystemChatPacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.True(decoded.Overlay);
     }
@@ -88,8 +84,7 @@ public class SystemChatPacketTests
         // Packet ID 124, String root declaring length 5 but no payload bytes.
         byte[] payload = [124, 0x08, 0x00, 0x05];
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -100,8 +95,7 @@ public class SystemChatPacketTests
         writer.Writer.WriteByte(0x08);
         writer.Writer.WriteShort(0); // empty string
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -110,8 +104,7 @@ public class SystemChatPacketTests
         // TAG_End (0x00) as the Text Component root type byte is not a valid root.
         byte[] payload = [124, 0x00];
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]

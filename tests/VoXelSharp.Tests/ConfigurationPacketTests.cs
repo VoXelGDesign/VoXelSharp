@@ -1,4 +1,3 @@
-using System.Text;
 using VoXelSharp.Protocol;
 using VoXelSharp.Protocol.Nbt;
 using VoXelSharp.Protocol.Packets;
@@ -14,15 +13,8 @@ public class ConfigurationPacketTests
     [Fact]
     public void FinishConfigurationRoundTrips()
     {
-        using var writer = new PacketWriterScope();
-
-        FinishConfigurationCodec.Instance.Encode(new FinishConfigurationPacket(), writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<FinishConfigurationPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
-        Assert.NotNull(decoded);
+        byte[] payload = FinishConfigurationCodec.Instance.Encode(new FinishConfigurationPacket());
+        _ = FinishConfigurationCodec.Instance.DecodeAs<FinishConfigurationPacket>(_config, PacketDirection.Clientbound, payload);
     }
 
     [Fact]
@@ -30,22 +22,14 @@ public class ConfigurationPacketTests
     {
         // Payload: packet ID 3 (0x03), no fields.
         byte[] payload = { 0x03 };
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<FinishConfigurationPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, payload));
-
-        Assert.NotNull(decoded);
+        _ = FinishConfigurationCodec.Instance.DecodeAs<FinishConfigurationPacket>(_config, PacketDirection.Clientbound, payload);
     }
 
     [Fact]
     public void FinishConfigurationTrailingBytes()
     {
         byte[] payload = { 0x03, 0xAA };
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, payload));
+        payload.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     // ---- Acknowledge Finish Configuration (serverbound, no fields) ----
@@ -53,15 +37,8 @@ public class ConfigurationPacketTests
     [Fact]
     public void AcknowledgeFinishConfigurationRoundTrips()
     {
-        using var writer = new PacketWriterScope();
-
-        AcknowledgeFinishConfigurationCodec.Instance.Encode(new AcknowledgeFinishConfigurationPacket(), writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<AcknowledgeFinishConfigurationPacket>(
-            registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
-
-        Assert.NotNull(decoded);
+        byte[] payload = AcknowledgeFinishConfigurationCodec.Instance.Encode(new AcknowledgeFinishConfigurationPacket());
+        _ = AcknowledgeFinishConfigurationCodec.Instance.DecodeAs<AcknowledgeFinishConfigurationPacket>(_config, PacketDirection.Serverbound, payload);
     }
 
     [Fact]
@@ -69,22 +46,14 @@ public class ConfigurationPacketTests
     {
         // Payload: packet ID 3 (0x03), no fields.
         byte[] payload = { 0x03 };
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<AcknowledgeFinishConfigurationPacket>(
-            registry.Decode(_config, PacketDirection.Serverbound, payload));
-
-        Assert.NotNull(decoded);
+        _ = AcknowledgeFinishConfigurationCodec.Instance.DecodeAs<AcknowledgeFinishConfigurationPacket>(_config, PacketDirection.Serverbound, payload);
     }
 
     [Fact]
     public void AcknowledgeFinishConfigurationTrailingBytes()
     {
         byte[] payload = { 0x03, 0xBB };
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     // ---- Feature Flags (clientbound) ----
@@ -93,14 +62,8 @@ public class ConfigurationPacketTests
     public void FeatureFlagsRoundTrips()
     {
         var original = new FeatureFlagsPacket(["minecraft:vanilla"]);
-        using var writer = new PacketWriterScope();
-
-        FeatureFlagsCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<FeatureFlagsPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
+        var decoded = FeatureFlagsCodec.Instance.DecodeAs<FeatureFlagsPacket>(
+            _config, PacketDirection.Clientbound, FeatureFlagsCodec.Instance.Encode(original));
         Assert.Equal(["minecraft:vanilla"], decoded.Features);
     }
 
@@ -113,25 +76,15 @@ public class ConfigurationPacketTests
         writer.Writer.WriteVarInt(1);
         writer.Writer.WriteString("minecraft:vanilla", FeatureFlagsPacket.MaxIdentifierLength);
 
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<FeatureFlagsPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
+        var decoded = FeatureFlagsCodec.Instance.DecodeAs<FeatureFlagsPacket>(_config, PacketDirection.Clientbound, writer.Bytes);
         Assert.Equal("minecraft:vanilla", decoded.Features[0]);
     }
 
     [Fact]
     public void FeatureFlagsEmpty()
     {
-        var original = new FeatureFlagsPacket([]);
-        using var writer = new PacketWriterScope();
-
-        FeatureFlagsCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<FeatureFlagsPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
+        byte[] payload = FeatureFlagsCodec.Instance.Encode(new FeatureFlagsPacket([]));
+        var decoded = FeatureFlagsCodec.Instance.DecodeAs<FeatureFlagsPacket>(_config, PacketDirection.Clientbound, payload);
         Assert.Empty(decoded.Features);
     }
 
@@ -141,10 +94,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         writer.Writer.WriteVarInt(13); // packet ID
         writer.Writer.WriteVarInt(-1); // negative feature count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -153,10 +103,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         FeatureFlagsCodec.Instance.Encode(new FeatureFlagsPacket([]), writer.Writer);
         writer.Writer.WriteByte(0x01); // trailing garbage
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     // ---- Known Packs (clientbound, id 15) ----
@@ -164,17 +111,9 @@ public class ConfigurationPacketTests
     [Fact]
     public void KnownPacksRoundTrips()
     {
-        var original = new KnownPacksPacket(
-        [
-            new KnownPack("minecraft", "core", "26.3"),
-        ]);
-        using var writer = new PacketWriterScope();
-
-        KnownPacksCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<KnownPacksPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        var original = new KnownPacksPacket([new KnownPack("minecraft", "core", "26.3")]);
+        var decoded = KnownPacksCodec.Instance.DecodeAs<KnownPacksPacket>(
+            _config, PacketDirection.Clientbound, KnownPacksCodec.Instance.Encode(original));
 
         Assert.Single(decoded.Packs);
         Assert.Equal("minecraft", decoded.Packs[0].Namespace);
@@ -193,10 +132,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteString("core", KnownPacksPacket.MaxPackFieldLength);
         writer.Writer.WriteString("26.3", KnownPacksPacket.MaxPackFieldLength);
 
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<KnownPacksPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
+        var decoded = KnownPacksCodec.Instance.DecodeAs<KnownPacksPacket>(_config, PacketDirection.Clientbound, writer.Bytes);
         Assert.Equal("minecraft", decoded.Packs[0].Namespace);
         Assert.Equal("core", decoded.Packs[0].ID);
         Assert.Equal("26.3", decoded.Packs[0].Version);
@@ -208,10 +144,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         writer.Writer.WriteVarInt(15); // packet ID
         writer.Writer.WriteVarInt(-1); // negative pack count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -220,10 +153,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         KnownPacksCodec.Instance.Encode(new KnownPacksPacket([]), writer.Writer);
         writer.Writer.WriteByte(0x00); // trailing garbage
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     // ---- Known Packs (serverbound, id 7) ----
@@ -231,17 +161,9 @@ public class ConfigurationPacketTests
     [Fact]
     public void ServerKnownPacksRoundTrips()
     {
-        var original = new KnownPacksPacket(
-        [
-            new KnownPack("minecraft", "core", "26.3"),
-        ]);
-        using var writer = new PacketWriterScope();
-
-        ServerKnownPacksCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<KnownPacksPacket>(
-            registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        var original = new KnownPacksPacket([new KnownPack("minecraft", "core", "26.3")]);
+        var decoded = ServerKnownPacksCodec.Instance.DecodeAs<KnownPacksPacket>(
+            _config, PacketDirection.Serverbound, ServerKnownPacksCodec.Instance.Encode(original));
 
         Assert.Single(decoded.Packs);
         Assert.Equal("minecraft", decoded.Packs[0].Namespace);
@@ -260,10 +182,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteString("core", KnownPacksPacket.MaxPackFieldLength);
         writer.Writer.WriteString("26.3", KnownPacksPacket.MaxPackFieldLength);
 
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<KnownPacksPacket>(
-            registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
-
+        var decoded = ServerKnownPacksCodec.Instance.DecodeAs<KnownPacksPacket>(_config, PacketDirection.Serverbound, writer.Bytes);
         Assert.Equal("minecraft", decoded.Packs[0].Namespace);
         Assert.Equal("core", decoded.Packs[0].ID);
         Assert.Equal("26.3", decoded.Packs[0].Version);
@@ -275,10 +194,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         writer.Writer.WriteVarInt(7);  // packet ID
         writer.Writer.WriteVarInt(-1); // negative pack count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     // ---- Registry Data (clientbound) ----
@@ -286,16 +202,9 @@ public class ConfigurationPacketTests
     [Fact]
     public void RegistryDataRoundTripsWithOmittedData()
     {
-        var original = new RegistryDataPacket(
-            "minecraft:dimension_type",
-            [new RegistryDataEntry("minecraft:overworld", null)]);
-        using var writer = new PacketWriterScope();
-
-        RegistryDataCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<RegistryDataPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        var original = RegistryDataPacket.Create("minecraft:dimension_type", "minecraft:overworld");
+        var decoded = RegistryDataCodec.Instance.DecodeAs<RegistryDataPacket>(
+            _config, PacketDirection.Clientbound, RegistryDataCodec.Instance.Encode(original));
 
         Assert.Equal("minecraft:dimension_type", decoded.RegistryId);
         Assert.Single(decoded.Entries);
@@ -310,13 +219,8 @@ public class ConfigurationPacketTests
         var original = new RegistryDataPacket(
             "minecraft:dimension_type",
             [new RegistryDataEntry("minecraft:overworld", data)]);
-        using var writer = new PacketWriterScope();
-
-        RegistryDataCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<RegistryDataPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = RegistryDataCodec.Instance.DecodeAs<RegistryDataPacket>(
+            _config, PacketDirection.Clientbound, RegistryDataCodec.Instance.Encode(original));
 
         Assert.Equal("minecraft:overworld", decoded.Entries[0].EntryId);
         Assert.NotNull(decoded.Entries[0].Data);
@@ -335,10 +239,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteString("minecraft:overworld", RegistryDataPacket.MaxIdentifierLength);
         writer.Writer.WriteBoolean(false);
 
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<RegistryDataPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
+        var decoded = RegistryDataCodec.Instance.DecodeAs<RegistryDataPacket>(_config, PacketDirection.Clientbound, writer.Bytes);
         Assert.Equal("minecraft:dimension_type", decoded.RegistryId);
         Assert.Single(decoded.Entries);
         Assert.Equal("minecraft:overworld", decoded.Entries[0].EntryId);
@@ -356,10 +257,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteString("minecraft:overworld", RegistryDataPacket.MaxIdentifierLength);
         writer.Writer.WriteBoolean(true); // data present
         writer.Writer.WriteByte(0x0A);    // only the root compound type byte
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -369,24 +267,16 @@ public class ConfigurationPacketTests
         writer.Writer.WriteVarInt(7);
         writer.Writer.WriteString("minecraft:dimension_type", RegistryDataPacket.MaxIdentifierLength);
         writer.Writer.WriteVarInt(-1); // negative entry count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
     public void RegistryDataTrailingBytes()
     {
         using var writer = new PacketWriterScope();
-        RegistryDataCodec.Instance.Encode(
-            new RegistryDataPacket("minecraft:dimension_type", []),
-            writer.Writer);
+        RegistryDataCodec.Instance.Encode(RegistryDataPacket.Create("minecraft:dimension_type"), writer.Writer);
         writer.Writer.WriteByte(0x00); // trailing garbage
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     // ---- Update Tags (clientbound) ----
@@ -396,17 +286,10 @@ public class ConfigurationPacketTests
     {
         var original = new UpdateTagsPacket(
         [
-            new TaggedRegistry(
-                "minecraft:block",
-                [new RegistryTag("minecraft:climbable", [1, 2, 3])]),
+            new TaggedRegistry("minecraft:block", [RegistryTag.With("minecraft:climbable", 1, 2, 3)]),
         ]);
-        using var writer = new PacketWriterScope();
-
-        UpdateTagsCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<UpdateTagsPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = UpdateTagsCodec.Instance.DecodeAs<UpdateTagsPacket>(
+            _config, PacketDirection.Clientbound, UpdateTagsCodec.Instance.Encode(original));
 
         Assert.Single(decoded.TaggedRegistries);
         Assert.Equal("minecraft:block", decoded.TaggedRegistries[0].Registry);
@@ -431,10 +314,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteVarInt(2);
         writer.Writer.WriteVarInt(3);
 
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<UpdateTagsPacket>(
-            registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
-
+        var decoded = UpdateTagsCodec.Instance.DecodeAs<UpdateTagsPacket>(_config, PacketDirection.Clientbound, writer.Bytes);
         Assert.Equal("minecraft:block", decoded.TaggedRegistries[0].Registry);
         Assert.Equal("minecraft:climbable", decoded.TaggedRegistries[0].Tags[0].Name);
         Assert.Equal([1, 2, 3], decoded.TaggedRegistries[0].Tags[0].EntryIds);
@@ -446,10 +326,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         writer.Writer.WriteVarInt(14); // packet ID
         writer.Writer.WriteVarInt(-1); // negative tagged-registry count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -460,10 +337,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteVarInt(1);
         writer.Writer.WriteString("minecraft:block", UpdateTagsPacket.MaxIdentifierLength);
         writer.Writer.WriteVarInt(-1); // negative tag count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -476,10 +350,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteVarInt(1);
         writer.Writer.WriteString("minecraft:climbable", UpdateTagsPacket.MaxIdentifierLength);
         writer.Writer.WriteVarInt(-1); // negative entry count
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -488,10 +359,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         UpdateTagsCodec.Instance.Encode(new UpdateTagsPacket([]), writer.Writer);
         writer.Writer.WriteByte(0x00); // trailing garbage
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Clientbound);
     }
 
     // ---- Client Information (serverbound) ----
@@ -501,13 +369,8 @@ public class ConfigurationPacketTests
     {
         var original = new ClientInformationPacket(
             "en_US", 8, ClientChatMode.Enabled, true, 0x7F, ClientMainHand.Right, false, true, ClientParticleStatus.All);
-        using var writer = new PacketWriterScope();
-
-        ClientInformationCodec.Instance.Encode(original, writer.Writer);
-
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<ClientInformationPacket>(
-            registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = ClientInformationCodec.Instance.DecodeAs<ClientInformationPacket>(
+            _config, PacketDirection.Serverbound, ClientInformationCodec.Instance.Encode(original));
 
         Assert.Equal("en_US", decoded.Locale);
         Assert.Equal(8, decoded.ViewDistance);
@@ -538,10 +401,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteBoolean(true);
         writer.Writer.WriteVarInt(0); // particle status all
 
-        var registry = CreateRegistry();
-        var decoded = Assert.IsType<ClientInformationPacket>(
-            registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
-
+        var decoded = ClientInformationCodec.Instance.DecodeAs<ClientInformationPacket>(_config, PacketDirection.Serverbound, writer.Bytes);
         Assert.Equal("en_US", decoded.Locale);
         Assert.Equal(8, decoded.ViewDistance);
         Assert.Equal(ClientChatMode.Enabled, decoded.ChatMode);
@@ -561,10 +421,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteString("en_US", ClientInformationPacket.MaxLocaleLength);
         writer.Writer.WriteByte(8);
         writer.Writer.WriteVarInt(3); // invalid chat mode
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     [Fact]
@@ -578,10 +435,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteBoolean(true);
         writer.Writer.WriteByte(0x00);
         writer.Writer.WriteVarInt(2); // invalid main hand
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     [Fact]
@@ -598,10 +452,7 @@ public class ConfigurationPacketTests
         writer.Writer.WriteBoolean(false);
         writer.Writer.WriteBoolean(true);
         writer.Writer.WriteVarInt(3); // invalid particle status
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     [Fact]
@@ -611,10 +462,7 @@ public class ConfigurationPacketTests
         using var writer = new PacketWriterScope();
         writer.Writer.WriteVarInt(0);
         writer.Writer.WriteString("en", ClientInformationPacket.MaxLocaleLength);
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     [Fact]
@@ -625,10 +473,7 @@ public class ConfigurationPacketTests
             new ClientInformationPacket("en_US", 8, ClientChatMode.Enabled, true, 0x00, ClientMainHand.Right, false, true, ClientParticleStatus.All),
             writer.Writer);
         writer.Writer.WriteByte(0x00); // trailing garbage
-
-        var registry = CreateRegistry();
-        Assert.Throws<InvalidDataException>(
-            () => registry.Decode(_config, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_config, PacketDirection.Serverbound);
     }
 
     // ---- Codec metadata ----
@@ -667,21 +512,5 @@ public class ConfigurationPacketTests
         Assert.Equal(ConnectionState.Configuration, AcknowledgeFinishConfigurationCodec.Instance.State);
         Assert.Equal(PacketDirection.Serverbound, AcknowledgeFinishConfigurationCodec.Instance.Direction);
         Assert.Equal(3, AcknowledgeFinishConfigurationCodec.Instance.PacketId);
-    }
-
-    // ---- Registry / helpers ----
-
-    private static PacketRegistry CreateRegistry()
-    {
-        var registry = new PacketRegistry();
-        registry.Register(ClientInformationCodec.Instance);
-        registry.Register(KnownPacksCodec.Instance);
-        registry.Register(ServerKnownPacksCodec.Instance);
-        registry.Register(RegistryDataCodec.Instance);
-        registry.Register(UpdateTagsCodec.Instance);
-        registry.Register(FeatureFlagsCodec.Instance);
-        registry.Register(FinishConfigurationCodec.Instance);
-        registry.Register(AcknowledgeFinishConfigurationCodec.Instance);
-        return registry;
     }
 }

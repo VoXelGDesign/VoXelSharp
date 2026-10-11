@@ -22,8 +22,7 @@ public class PlayerInfoPacketTests
 
         PlayerInfoRemoveCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInfoRemovePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoRemovePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(2, decoded.Uuids.Length);
         Assert.Equal(0x0123456789ABCDEF, decoded.Uuids[0].Msb);
@@ -41,8 +40,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteLong(0x1122334455667788);
         writer.Writer.WriteLong(-7366731831488846080L); // 0x99AABBCCDDEEFF00
 
-        var decoded = Assert.IsType<PlayerInfoRemovePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoRemovePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Single(decoded.Uuids);
         Assert.Equal(0x1122334455667788, decoded.Uuids[0].Msb);
@@ -55,8 +53,7 @@ public class PlayerInfoPacketTests
         using var writer = new PacketWriterScope();
         PlayerInfoRemoveCodec.Instance.Encode(new PlayerInfoRemovePacket([]), writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInfoRemovePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoRemovePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Empty(decoded.Uuids);
     }
@@ -70,8 +67,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteVarInt(1);
         writer.Writer.WriteBytes(new byte[4]);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -82,8 +78,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteVarInt(70);
         writer.Writer.WriteVarInt(-1);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     // ---- Player Info Update (clientbound, id 71) ----
@@ -100,8 +95,7 @@ public class PlayerInfoPacketTests
 
         PlayerInfoUpdateCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInfoUpdatePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoUpdatePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(PlayerInfoActions.AddPlayer, decoded.Actions);
         Assert.Single(decoded.Players);
@@ -128,8 +122,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteString("U", PlayerInfoUpdatePacket.MaxNameLength);
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<PlayerInfoUpdatePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoUpdatePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(PlayerInfoActions.AddPlayer, decoded.Actions);
         PlayerInfoAddPlayerData addPlayer = decoded.Players[0].AddPlayer!;
@@ -168,8 +161,7 @@ public class PlayerInfoPacketTests
 
         PlayerInfoUpdateCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInfoUpdatePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoUpdatePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(2, decoded.Players.Length);
         Assert.Equal("Alpha", decoded.Players[0].AddPlayer!.Name);
@@ -200,8 +192,7 @@ public class PlayerInfoPacketTests
 
         PlayerInfoUpdateCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInfoUpdatePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoUpdatePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         var chat = decoded.Players[0].ChatSession!;
         Assert.Equal(9, chat.SessionIdMsb);
@@ -220,8 +211,7 @@ public class PlayerInfoPacketTests
 
         PlayerInfoUpdateCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInfoUpdatePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoUpdatePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal("nick", Assert.IsType<NbtString>(decoded.Players[0].DisplayName!).Value);
     }
@@ -237,8 +227,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteLong(5);
         writer.Writer.WriteLong(6);
 
-        var decoded = Assert.IsType<PlayerInfoUpdatePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInfoUpdatePacket>(_play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(PlayerInfoActions.None, decoded.Actions);
         Assert.Single(decoded.Players);
@@ -254,8 +243,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteByte(0x01); // Add Player
         writer.Writer.WriteVarInt(-1); // count
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -266,8 +254,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteByte(0x00);
         writer.Writer.WriteVarInt(PlayerInfoUpdatePacket.MaxPlayersCount + 1);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -283,8 +270,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteString("U", PlayerInfoUpdatePacket.MaxNameLength);
         // properties count omitted (truncated)
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -298,8 +284,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteLong(0);
         writer.Writer.WriteVarInt(9); // invalid game mode
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]
@@ -317,8 +302,7 @@ public class PlayerInfoPacketTests
         writer.Writer.WriteLong(3);
         writer.Writer.WriteVarInt(PlayerInfoChatSessionData.MaxEncodedPublicKeyLength + 1); // too long
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     [Fact]

@@ -15,12 +15,8 @@ public class PlaySmallPacketTests
         var original = new SynchronizePlayerPositionPacket(
             5, 100.5, 64.0, -200.25, 0.0, 0.0, 0.0, 12.5f, -30.0f,
             TeleportFlags.None);
-        using var writer = new PacketWriterScope();
-
-        SynchronizePlayerPositionCodec.Instance.Encode(original, writer.Writer);
-
-        var decoded = Assert.IsType<SynchronizePlayerPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SynchronizePlayerPositionCodec.Instance.DecodeAs<SynchronizePlayerPositionPacket>(
+            _play, PacketDirection.Clientbound, SynchronizePlayerPositionCodec.Instance.Encode(original));
 
         Assert.Equal(5, decoded.TeleportId);
         Assert.Equal(100.5, decoded.X);
@@ -38,12 +34,8 @@ public class PlaySmallPacketTests
         var original = new SynchronizePlayerPositionPacket(
             3, 1.0, 2.0, 3.0, 0.1, 0.2, 0.3, 90.0f, 45.0f,
             TeleportFlags.RelativeX | TeleportFlags.RelativeY | TeleportFlags.RelativeZ);
-        using var writer = new PacketWriterScope();
-
-        SynchronizePlayerPositionCodec.Instance.Encode(original, writer.Writer);
-
-        var decoded = Assert.IsType<SynchronizePlayerPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SynchronizePlayerPositionCodec.Instance.DecodeAs<SynchronizePlayerPositionPacket>(
+            _play, PacketDirection.Clientbound, SynchronizePlayerPositionCodec.Instance.Encode(original));
 
         Assert.Equal(TeleportFlags.RelativeX | TeleportFlags.RelativeY | TeleportFlags.RelativeZ, decoded.Flags);
         Assert.Equal(0.1, decoded.VelocityX);
@@ -66,8 +58,8 @@ public class PlaySmallPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteInt(0);
 
-        var decoded = Assert.IsType<SynchronizePlayerPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SynchronizePlayerPositionCodec.Instance.DecodeAs<SynchronizePlayerPositionPacket>(
+            _play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(1, decoded.TeleportId);
         Assert.Equal(1.0, decoded.X);
@@ -78,9 +70,7 @@ public class PlaySmallPacketTests
     public void SynchronizePlayerPositionTruncated()
     {
         byte[] payload = [73, 0x01, 0x00, 0x00]; // only teleport id + 2 bytes
-
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     // ---- Set Default Spawn Position (clientbound, id 99) ----
@@ -89,12 +79,8 @@ public class PlaySmallPacketTests
     public void SetDefaultSpawnPositionRoundTrips()
     {
         var original = new SetDefaultSpawnPositionPacket("minecraft:overworld", new BlockPosition(8, 70, -16), 0.0f, 0.0f);
-        using var writer = new PacketWriterScope();
-
-        SetDefaultSpawnPositionCodec.Instance.Encode(original, writer.Writer);
-
-        var decoded = Assert.IsType<SetDefaultSpawnPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SetDefaultSpawnPositionCodec.Instance.DecodeAs<SetDefaultSpawnPositionPacket>(
+            _play, PacketDirection.Clientbound, SetDefaultSpawnPositionCodec.Instance.Encode(original));
 
         Assert.Equal("minecraft:overworld", decoded.DimensionName);
         Assert.Equal(new BlockPosition(8, 70, -16), decoded.Location);
@@ -112,8 +98,8 @@ public class PlaySmallPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteFloat(0.0f);
 
-        var decoded = Assert.IsType<SetDefaultSpawnPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SetDefaultSpawnPositionCodec.Instance.DecodeAs<SetDefaultSpawnPositionPacket>(
+            _play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal("minecraft:overworld", decoded.DimensionName);
         Assert.Equal(new BlockPosition(0, 64, 0), decoded.Location);
@@ -127,9 +113,7 @@ public class PlaySmallPacketTests
         writer.Writer.WriteString("minecraft:overworld", SetDefaultSpawnPositionPacket.MaxIdentifierLength);
         writer.Writer.WritePosition(new BlockPosition(0, 64, 0));
         writer.Writer.WriteFloat(0.0f); // pitch missing
-
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     // ---- Set Simulation Distance (clientbound, id 113) ----
@@ -137,11 +121,8 @@ public class PlaySmallPacketTests
     [Fact]
     public void SetSimulationDistanceRoundTrips()
     {
-        using var writer = new PacketWriterScope();
-        SetSimulationDistanceCodec.Instance.Encode(new SetSimulationDistancePacket(10), writer.Writer);
-
-        var decoded = Assert.IsType<SetSimulationDistancePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SetSimulationDistanceCodec.Instance.DecodeAs<SetSimulationDistancePacket>(
+            _play, PacketDirection.Clientbound, SetSimulationDistanceCodec.Instance.Encode(new SetSimulationDistancePacket(10)));
 
         Assert.Equal(10, decoded.SimulationDistance);
     }
@@ -153,8 +134,8 @@ public class PlaySmallPacketTests
         writer.Writer.WriteVarInt(113);
         writer.Writer.WriteVarInt(8);
 
-        var decoded = Assert.IsType<SetSimulationDistancePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SetSimulationDistanceCodec.Instance.DecodeAs<SetSimulationDistancePacket>(
+            _play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(8, decoded.SimulationDistance);
     }
@@ -164,11 +145,8 @@ public class PlaySmallPacketTests
     [Fact]
     public void SetHeldItemRoundTrips()
     {
-        using var writer = new PacketWriterScope();
-        SetHeldItemCodec.Instance.Encode(new SetHeldItemPacket(4), writer.Writer);
-
-        var decoded = Assert.IsType<SetHeldItemPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SetHeldItemCodec.Instance.DecodeAs<SetHeldItemPacket>(
+            _play, PacketDirection.Clientbound, SetHeldItemCodec.Instance.Encode(new SetHeldItemPacket(4)));
 
         Assert.Equal(4, decoded.Slot);
     }
@@ -180,8 +158,8 @@ public class PlaySmallPacketTests
         writer.Writer.WriteVarInt(107);
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<SetHeldItemPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = SetHeldItemCodec.Instance.DecodeAs<SetHeldItemPacket>(
+            _play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(0, decoded.Slot);
     }
@@ -201,13 +179,9 @@ public class PlaySmallPacketTests
     [Fact]
     public void GameEventRoundTrips()
     {
-        using var writer = new PacketWriterScope();
-        GameEventCodec.Instance.Encode(
-            new GameEventPacket(GameEventPacket.LevelChunksLoadStart, 0.0f),
-            writer.Writer);
-
-        var decoded = Assert.IsType<GameEventPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var original = new GameEventPacket(GameEventPacket.LevelChunksLoadStart, 0.0f);
+        var decoded = GameEventCodec.Instance.DecodeAs<GameEventPacket>(
+            _play, PacketDirection.Clientbound, GameEventCodec.Instance.Encode(original));
 
         Assert.Equal(GameEventPacket.LevelChunksLoadStart, decoded.EventId);
         Assert.Equal(0.0f, decoded.Value);
@@ -222,8 +196,8 @@ public class PlaySmallPacketTests
         writer.Writer.WriteByte(GameEventPacket.LevelChunksLoadStart);
         writer.Writer.WriteFloat(0.0f);
 
-        var decoded = Assert.IsType<GameEventPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = GameEventCodec.Instance.DecodeAs<GameEventPacket>(
+            _play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(GameEventPacket.LevelChunksLoadStart, decoded.EventId);
     }
@@ -232,9 +206,7 @@ public class PlaySmallPacketTests
     public void GameEventTruncated()
     {
         byte[] payload = [39, 13, 0x00, 0x00]; // value float missing
-
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Clientbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Clientbound);
     }
 
     // ---- Codec metadata ----

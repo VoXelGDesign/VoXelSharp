@@ -15,8 +15,7 @@ public class PluginMessagePacketTests
 
         PlayServerboundPluginMessageCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PluginMessagePacket>(
-            PacketRegistry.CreateDefault().Decode(ConnectionState.Play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PluginMessagePacket>(ConnectionState.Play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(PluginMessagePacket.BrandChannel, decoded.Channel);
         Assert.Equal(brandData, decoded.Data);
@@ -30,8 +29,7 @@ public class PluginMessagePacketTests
 
         ServerConfigurationPluginMessageCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PluginMessagePacket>(
-            PacketRegistry.CreateDefault().Decode(ConnectionState.Configuration, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PluginMessagePacket>(ConnectionState.Configuration, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal("minecraft:brand", decoded.Channel);
         Assert.Equal([0x00, 0x01, 0x02], decoded.Data);
@@ -46,8 +44,7 @@ public class PluginMessagePacketTests
         writer.Writer.WriteString("minecraft:brand", PluginMessagePacket.MaxChannelLength);
         writer.Writer.WriteBytes(EncodeString("vanilla"));
 
-        var decoded = Assert.IsType<PluginMessagePacket>(
-            PacketRegistry.CreateDefault().Decode(ConnectionState.Play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PluginMessagePacket>(ConnectionState.Play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal("minecraft:brand", decoded.Channel);
         Assert.Equal("vanilla", DecodeString(decoded.Data));
@@ -61,8 +58,7 @@ public class PluginMessagePacketTests
 
         PlayClientboundPluginMessageCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PluginMessagePacket>(
-            PacketRegistry.CreateDefault().Decode(ConnectionState.Play, PacketDirection.Clientbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PluginMessagePacket>(ConnectionState.Play, PacketDirection.Clientbound, writer.Bytes);
 
         Assert.Equal(PluginMessagePacket.BrandChannel, decoded.Channel);
         Assert.Equal("VoXelSharp", DecodeString(decoded.Data));
@@ -76,8 +72,7 @@ public class PluginMessagePacketTests
 
         PlayServerboundPluginMessageCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PluginMessagePacket>(
-            PacketRegistry.CreateDefault().Decode(ConnectionState.Play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PluginMessagePacket>(ConnectionState.Play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Empty(decoded.Data);
     }
@@ -91,8 +86,7 @@ public class PluginMessagePacketTests
         writer.Writer.WriteString("minecraft:brand", PluginMessagePacket.MaxChannelLength);
         writer.Writer.WriteBytes(EncodeString("vanilla"));
 
-        var decoded = Assert.IsType<PluginMessagePacket>(
-            PacketRegistry.CreateDefault().Decode(ConnectionState.Configuration, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PluginMessagePacket>(ConnectionState.Configuration, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(PluginMessagePacket.BrandChannel, decoded.Channel);
         Assert.Equal("vanilla", DecodeString(decoded.Data));

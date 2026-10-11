@@ -17,8 +17,7 @@ public class PlayServerboundPacketTests
 
         ConfirmTeleportationCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<ConfirmTeleportationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ConfirmTeleportationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(7, decoded.TeleportId);
         Assert.Equal(10.5, decoded.X);
@@ -40,8 +39,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteFloat(0.0f);
 
-        var decoded = Assert.IsType<ConfirmTeleportationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ConfirmTeleportationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1, decoded.TeleportId);
         Assert.Equal(3.0, decoded.Z);
@@ -52,8 +50,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = [0x00, 0x01]; // ID only
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Set Player Position and Rotation (serverbound, id 31) ----
@@ -66,8 +63,7 @@ public class PlayServerboundPacketTests
 
         SetPlayerPositionAndRotationCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SetPlayerPositionAndRotationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerPositionAndRotationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1.2, decoded.X);
         Assert.Equal(64.0, decoded.FeetY);
@@ -89,8 +85,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteByte(0x00);
 
-        var decoded = Assert.IsType<SetPlayerPositionAndRotationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerPositionAndRotationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(64.0, decoded.FeetY);
         Assert.Equal(0x00, decoded.Flags);
@@ -103,8 +98,7 @@ public class PlayServerboundPacketTests
         SetPlayerPositionAndRotationCodec.Instance.Encode(
             new SetPlayerPositionAndRotationPacket(0, 0, 0, 0, 0, 0x03), writer.Writer);
 
-        var decoded = Assert.IsType<SetPlayerPositionAndRotationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerPositionAndRotationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x03, decoded.Flags);
     }
@@ -117,8 +111,7 @@ public class PlayServerboundPacketTests
         using var writer = new PacketWriterScope();
         ChunkBatchReceivedCodec.Instance.Encode(new ChunkBatchReceivedPacket(4.0f), writer.Writer);
 
-        var decoded = Assert.IsType<ChunkBatchReceivedPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ChunkBatchReceivedPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(4.0f, decoded.ChunksPerTick);
     }
@@ -130,8 +123,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(11);
         writer.Writer.WriteFloat(0.0f);
 
-        var decoded = Assert.IsType<ChunkBatchReceivedPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ChunkBatchReceivedPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0.0f, decoded.ChunksPerTick);
     }
@@ -144,8 +136,7 @@ public class PlayServerboundPacketTests
         using var writer = new PacketWriterScope();
         PlayerLoadedCodec.Instance.Encode(new PlayerLoadedPacket(), writer.Writer);
 
-        var decoded = Assert.IsType<PlayerLoadedPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerLoadedPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.NotNull(decoded);
     }
@@ -155,8 +146,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = { 44 };
 
-        var decoded = Assert.IsType<PlayerLoadedPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        var decoded = PlayerLoadedCodec.Instance.DecodeAs<PlayerLoadedPacket>(_play, PacketDirection.Serverbound, payload);
 
         Assert.NotNull(decoded);
     }
@@ -166,8 +156,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = { 44, 0x00 };
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Client Tick End (serverbound, id 13) ----
@@ -178,8 +167,7 @@ public class PlayServerboundPacketTests
         using var writer = new PacketWriterScope();
         ClientTickEndCodec.Instance.Encode(new ClientTickEndPacket(), writer.Writer);
 
-        var decoded = Assert.IsType<ClientTickEndPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ClientTickEndPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.NotNull(decoded);
     }
@@ -189,8 +177,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = { 13 };
 
-        var decoded = Assert.IsType<ClientTickEndPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        var decoded = ClientTickEndCodec.Instance.DecodeAs<ClientTickEndPacket>(_play, PacketDirection.Serverbound, payload);
 
         Assert.NotNull(decoded);
     }
@@ -203,8 +190,7 @@ public class PlayServerboundPacketTests
         using var writer = new PacketWriterScope();
         PlayPongCodec.Instance.Encode(new PlayPongPacket(0x01020304), writer.Writer);
 
-        var decoded = Assert.IsType<PlayPongPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayPongPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x01020304, decoded.Id);
     }
@@ -216,8 +202,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(45);
         writer.Writer.WriteInt(-1);
 
-        var decoded = Assert.IsType<PlayPongPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayPongPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(-1, decoded.Id);
     }
@@ -232,8 +217,7 @@ public class PlayServerboundPacketTests
             new ClientInformationPacket("en_US", 8, ClientChatMode.Enabled, true, 0x7F, ClientMainHand.Right, false, true, ClientParticleStatus.All),
             writer.Writer);
 
-        var decoded = Assert.IsType<ClientInformationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ClientInformationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal("en_US", decoded.Locale);
         Assert.Equal(8, decoded.ViewDistance);
@@ -255,8 +239,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteBoolean(true);
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<ClientInformationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ClientInformationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal("en_GB", decoded.Locale);
         Assert.Equal(10, decoded.ViewDistance);
@@ -271,8 +254,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteByte(8);
         writer.Writer.WriteVarInt(9); // invalid
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Set Player Position (serverbound, id 30) ----
@@ -285,8 +267,7 @@ public class PlayServerboundPacketTests
 
         SetPlayerPositionCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SetPlayerPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerPositionPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1.2, decoded.X);
         Assert.Equal(64.0, decoded.FeetY);
@@ -304,8 +285,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteDouble(0.0);
         writer.Writer.WriteByte(0x03);
 
-        var decoded = Assert.IsType<SetPlayerPositionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerPositionPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(64.0, decoded.FeetY);
         Assert.Equal(0x03, decoded.Flags);
@@ -316,8 +296,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = [30, 0x00, 0x00]; // only two bytes after the ID
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Set Player Rotation (serverbound, id 32) ----
@@ -330,8 +309,7 @@ public class PlayServerboundPacketTests
 
         SetPlayerRotationCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SetPlayerRotationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerRotationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(90.0f, decoded.Yaw);
         Assert.Equal(-5.0f, decoded.Pitch);
@@ -347,8 +325,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteByte(0x00);
 
-        var decoded = Assert.IsType<SetPlayerRotationPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerRotationPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0.0f, decoded.Yaw);
         Assert.Equal(0x00, decoded.Flags);
@@ -359,8 +336,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = [32, 0x00]; // only one byte after the ID
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Set Player Movement Flags (serverbound, id 33) ----
@@ -373,8 +349,7 @@ public class PlayServerboundPacketTests
 
         SetPlayerStatusOnlyCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SetPlayerStatusOnlyPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerStatusOnlyPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x03, decoded.Flags);
     }
@@ -386,8 +361,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(33);
         writer.Writer.WriteByte(0x01);
 
-        var decoded = Assert.IsType<SetPlayerStatusOnlyPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetPlayerStatusOnlyPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x01, decoded.Flags);
     }
@@ -397,8 +371,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = [33]; // flags byte missing
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Punch (serverbound, id 46) ----
@@ -409,8 +382,7 @@ public class PlayServerboundPacketTests
         using var writer = new PacketWriterScope();
         PunchCodec.Instance.Encode(new PunchPacket(), writer.Writer);
 
-        var decoded = Assert.IsType<PunchPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PunchPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.NotNull(decoded);
     }
@@ -420,8 +392,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = { 46 };
 
-        var decoded = Assert.IsType<PunchPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        var decoded = PunchCodec.Instance.DecodeAs<PunchPacket>(_play, PacketDirection.Serverbound, payload);
 
         Assert.NotNull(decoded);
     }
@@ -431,8 +402,7 @@ public class PlayServerboundPacketTests
     {
         byte[] payload = { 46, 0x00 };
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, payload));
+        payload.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Player Command (serverbound, id 42) ----
@@ -445,8 +415,7 @@ public class PlayServerboundPacketTests
 
         PlayerCommandCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerCommandPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerCommandPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1, decoded.EntityId);
         Assert.Equal(2, decoded.ActionId);
@@ -462,8 +431,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(1); // START_SPRINTING
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<PlayerCommandPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerCommandPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1, decoded.ActionId);
     }
@@ -477,8 +445,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(99); // invalid action
         writer.Writer.WriteVarInt(0);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Set Carried Item (serverbound, id 54) ----
@@ -491,8 +458,7 @@ public class PlayServerboundPacketTests
 
         SetCarriedItemCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<SetCarriedItemPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetCarriedItemPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(4, decoded.Slot);
     }
@@ -504,8 +470,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(54);
         writer.Writer.WriteShort(0);
 
-        var decoded = Assert.IsType<SetCarriedItemPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<SetCarriedItemPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.Slot);
     }
@@ -520,8 +485,7 @@ public class PlayServerboundPacketTests
 
         PlayerActionCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerActionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerActionPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.Status);
         Assert.Equal(new BlockPosition(8, 64, -16), decoded.Location);
@@ -539,8 +503,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteByte(0);
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<PlayerActionPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerActionPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(5, decoded.Status);
     }
@@ -555,8 +518,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteByte(0);
         writer.Writer.WriteVarInt(0);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     [Fact]
@@ -569,8 +531,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteByte(6); // invalid face
         writer.Writer.WriteVarInt(0);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Use Item On (serverbound, id 66) ----
@@ -583,8 +544,7 @@ public class PlayServerboundPacketTests
 
         UseItemOnCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<UseItemOnPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<UseItemOnPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.Hand);
         Assert.Equal(new BlockPosition(8, 64, -16), decoded.Location);
@@ -612,8 +572,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteBoolean(false);
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<UseItemOnPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<UseItemOnPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.Hand);
         Assert.Equal(new BlockPosition(0, 64, 0), decoded.Location);
@@ -634,8 +593,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteBoolean(false);
         writer.Writer.WriteVarInt(0);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Use Item (serverbound, id 67) ----
@@ -648,8 +606,7 @@ public class PlayServerboundPacketTests
 
         UseItemCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<UseItemPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<UseItemPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1, decoded.Hand);
         Assert.Equal(3, decoded.Sequence);
@@ -667,8 +624,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteFloat(0.0f);
 
-        var decoded = Assert.IsType<UseItemPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<UseItemPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.Hand);
     }
@@ -683,8 +639,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteFloat(0.0f);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Attack (serverbound, id 1) ----
@@ -697,8 +652,7 @@ public class PlayServerboundPacketTests
 
         AttackCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<AttackPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<AttackPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(42, decoded.EntityId);
     }
@@ -710,8 +664,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(1);
         writer.Writer.WriteVarInt(7);
 
-        var decoded = Assert.IsType<AttackPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<AttackPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(7, decoded.EntityId);
     }
@@ -726,8 +679,7 @@ public class PlayServerboundPacketTests
 
         ClientCommandCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<ClientCommandPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ClientCommandPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.ActionId);
     }
@@ -739,8 +691,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(12);
         writer.Writer.WriteVarInt(1); // REQUEST_STATS
 
-        var decoded = Assert.IsType<ClientCommandPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ClientCommandPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(1, decoded.ActionId);
     }
@@ -752,8 +703,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(12);
         writer.Writer.WriteVarInt(9); // invalid
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Container Click (serverbound, id 18) ----
@@ -781,8 +731,7 @@ public class PlayServerboundPacketTests
         using var writer = new PacketWriterScope();
         ContainerClickCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<ContainerClickPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ContainerClickPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.ContainerId);
         Assert.Equal(3, decoded.StateId);
@@ -812,8 +761,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(0); // no changed slots
         writer.Writer.WriteBoolean(false); // empty carried item
 
-        var decoded = Assert.IsType<ContainerClickPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ContainerClickPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.ContainerId);
         Assert.Empty(decoded.ChangedSlots);
@@ -833,8 +781,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(0);
         writer.Writer.WriteBoolean(false);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     [Fact]
@@ -844,8 +791,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(18);
         writer.Writer.WriteVarInt(-1); // invalid container id
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Container Close (serverbound, id 19) ----
@@ -858,8 +804,7 @@ public class PlayServerboundPacketTests
 
         ContainerCloseCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<ContainerClosePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ContainerClosePacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(2, decoded.ContainerId);
     }
@@ -871,8 +816,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(19);
         writer.Writer.WriteVarInt(0);
 
-        var decoded = Assert.IsType<ContainerClosePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ContainerClosePacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.ContainerId);
     }
@@ -884,8 +828,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(19);
         writer.Writer.WriteVarInt(-1);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Move Vehicle (serverbound, id 34) ----
@@ -898,8 +841,7 @@ public class PlayServerboundPacketTests
 
         MoveVehicleCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<MoveVehiclePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<MoveVehiclePacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(10.5, decoded.X);
         Assert.Equal(64.0, decoded.Y);
@@ -921,8 +863,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteBoolean(false);
 
-        var decoded = Assert.IsType<MoveVehiclePacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<MoveVehiclePacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.False(decoded.OnGround);
     }
@@ -939,8 +880,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteFloat(0.0f);
         writer.Writer.WriteBoolean(false);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Player Abilities (serverbound, id 40) ----
@@ -953,8 +893,7 @@ public class PlayServerboundPacketTests
 
         ServerPlayerAbilitiesCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<ServerPlayerAbilitiesPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ServerPlayerAbilitiesPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x02, decoded.Flags);
     }
@@ -966,8 +905,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(40);
         writer.Writer.WriteByte(0x00);
 
-        var decoded = Assert.IsType<ServerPlayerAbilitiesPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<ServerPlayerAbilitiesPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x00, decoded.Flags);
     }
@@ -982,8 +920,7 @@ public class PlayServerboundPacketTests
 
         PlayerInputCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<PlayerInputPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInputPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x01, decoded.Flags);
     }
@@ -995,8 +932,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteVarInt(43);
         writer.Writer.WriteByte(0x41); // forward + sprint
 
-        var decoded = Assert.IsType<PlayerInputPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<PlayerInputPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0x41, decoded.Flags);
     }
@@ -1011,8 +947,7 @@ public class PlayServerboundPacketTests
 
         RecipeBookChangeSettingsCodec.Instance.Encode(original, writer.Writer);
 
-        var decoded = Assert.IsType<RecipeBookChangeSettingsPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<RecipeBookChangeSettingsPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(0, decoded.BookType);
         Assert.True(decoded.IsOpen);
@@ -1028,8 +963,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteBoolean(false);
         writer.Writer.WriteBoolean(true);
 
-        var decoded = Assert.IsType<RecipeBookChangeSettingsPacket>(
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        var decoded = PacketRegistry.CreateDefault().DecodeAs<RecipeBookChangeSettingsPacket>(_play, PacketDirection.Serverbound, writer.Bytes);
 
         Assert.Equal(3, decoded.BookType);
         Assert.True(decoded.IsFiltering);
@@ -1044,8 +978,7 @@ public class PlayServerboundPacketTests
         writer.Writer.WriteBoolean(false);
         writer.Writer.WriteBoolean(false);
 
-        Assert.Throws<InvalidDataException>(() =>
-            PacketRegistry.CreateDefault().Decode(_play, PacketDirection.Serverbound, writer.Bytes));
+        writer.Bytes.AssertInvalidData(_play, PacketDirection.Serverbound);
     }
 
     // ---- Codec metadata ----
