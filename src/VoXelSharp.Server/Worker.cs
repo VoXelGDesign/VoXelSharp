@@ -16,7 +16,9 @@ public class Worker(ILogger<Worker> logger) : BackgroundService
 
         var registry = PacketRegistry.CreateDefault();
         var statusProvider = new ServerStatusJsonProvider(new ServerStatusData(description, maxPlayers, 0));
-        return new MinecraftServer(registry, statusProvider, logger, port);
+        // World persists under data/world (matches the Docker compose volume ./data/world:/app/data/world).
+        string worldDirectory = Path.Combine(Directory.GetCurrentDirectory(), "data", "world");
+        return new MinecraftServer(registry, statusProvider, logger, port, worldDirectory: worldDirectory);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

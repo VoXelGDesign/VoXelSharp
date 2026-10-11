@@ -326,6 +326,150 @@ public class MinecraftServerIntegrationTests
         }
     }
 
+    [Fact]
+    public async Task M6WorldPersistsAcrossRestartOverTcp()
+    {
+        var statusProvider = new ServerStatusJsonProvider(
+            new ServerStatusData("A Minecraft Server", 20, 0));
+        var registry = PacketRegistry.CreateDefault();
+        CancellationToken ct = TestContext.Current.CancellationToken;
+
+        string worldDirectory = Directory.CreateTempSubdirectory("voxelsharp-tests").FullName;
+        try
+        {
+            // ---- Server A: break the grass block at (0,-61,0), then shut down (which flushes) ----
+            var serverA = new MinecraftServer(registry, statusProvider, NullLogger<MinecraftServer>.Instance, 0, worldDirectory: worldDirectory);
+            serverA.Start();
+            int portA = serverA.Port;
+
+            using (TcpClient client = new())
+            {
+                await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, portA), ct);
+                NetworkStream stream = client.GetStream();
+                var reader = new FrameReader(stream);
+
+                await JoinToPlayAsync(stream, reader, registry, ct);
+
+                // Move to the same spot above the grass block the M5 loop uses.
+                await SendFrameAsync(stream, SetPlayerPositionCodec.Instance,
+                    new SetPlayerPositionPacket(0.5, -60.0, 0.5, 0x01), ct);
+
+                await SendFrameAsync(stream, PlayerActionCodec.Instance,
+                    new PlayerActionPacket(PlayerActionPacket.StopDestroyBlock, new BlockPosition(0, -61, 0), face: 3, sequence: 1), ct);
+
+                var update = Assert.IsType<BlockUpdatePacket>(
+                    registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+                Assert.Equal(BlockStateIds.Air, update.BlockStateId); // grass removed
+
+                // Drain the drop + ack the change; then disconnect.
+                Assert.IsType<AddEntityPacket>(
+                    registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+                Assert.IsType<SetEntityDataPacket>(
+                    registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+                Assert.IsType<BlockChangedAckPacket>(
+                    registry.Decode(ConnectionState.Play, PacketDirection.Clientbound, await reader.ReadFrameAsync(ct)));
+            }
+
+            await serverA.StopAsync(); // graceful: waits for the session, then saves the world.
+            Assert.True(File.Exists(Path.Combine(worldDirectory, WorldFileStore.FileName)),
+                "StopAsync should have written the world save.");
+
+            // ---- Server B: same world directory; the broken block must still be air ----
+            var serverB = new MinecraftServer(registry, statusProvider, NullLogger<MinecraftServer>.Instance, 0, worldDirectory: worldDirectory);
+            serverB.Start();
+            int portB = serverB.Port;
+
+            try
+            {
+                using TcpClient client = new();
+                await client.ConnectAsync(new IPEndPoint(IPAddress.Loopback, portB), ct);
+                NetworkStream stream = client.GetStream();
+                var reader = new FrameReader(stream);
+
+                ChunkDataPacket centerChunk = await JoinToPlayAndReadCenterChunkAsync(stream, reader, registry, ct);
+                ChunkSection[] sections = ChunkDataIO.DecodeSections(centerChunk.Data, FlatWorldGenerator.SectionCount);
+
+                // (0,-61,0) is local y=3 in section 0: entry (y*16+z)*16+x = 3*256 + 0.
+                int brokenEntry = (3 * 16 + 0) * 16 + 0;
+                Assert.Equal(BlockStateIds.Air, sections[0].Blocks.GlobalIdAt(brokenEntry));
+                // A neighbouring grass block was untouched and regenerates.
+                int intactEntry = (3 * 16 + 0) * 16 + 5;
+                Assert.Equal(BlockStateIds.GrassBlock, sections[0].Blocks.GlobalIdAt(intactEntry));
+            }
+            finally
+            {
+                await serverB.StopAsync();
+            }
+        }
+        finally
+        {
+            Directory.Delete(worldDirectory, recursive: true);
+        }
+    }
+
+    /// <summary>Completes login + Configuration, enters Play, and returns the (0,0) center chunk
+    /// read directly out of the join burst (PlayJoinDeliversFlatWorldChunksOverTcp pattern — the
+    /// burst must NOT be consumed by ConsumePlayJoinSequenceAsync first, or the chunk is gone).
+    /// </summary>
+    private static async Task<ChunkDataPacket> JoinToPlayAndReadCenterChunkAsync(
+        NetworkStream stream, FrameReader reader, PacketRegistry registry, CancellationToken ct)
+    {
+        await SendFrameAsync(stream, HandshakeCodec.Instance,
+            new HandshakePacket(777, "localhost", 25565, HandshakeIntent.Login), ct);
+        await SendFrameAsync(stream, LoginStartCodec.Instance,
+            new LoginStartPacket("Player1", 1, 2), ct);
+        await reader.ReadFrameAsync(ct); // Login Success
+        await SendFrameAsync(stream, LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket(), ct);
+        await reader.ReadFrameAsync(ct); // Known Packs (clientbound)
+        await SendFrameAsync(stream, ServerKnownPacksCodec.Instance, new KnownPacksPacket([]), ct);
+
+        var provider = new ServerConfigurationDataProvider();
+        for (int i = 0; i < provider.RegistryData.Count; i++)
+        {
+            await reader.ReadFrameAsync(ct); // Registry Data
+        }
+
+        await reader.ReadFrameAsync(ct); // Update Tags
+        await reader.ReadFrameAsync(ct); // Feature Flags
+        await reader.ReadFrameAsync(ct); // Finish Configuration
+        await SendFrameAsync(stream, AcknowledgeFinishConfigurationCodec.Instance,
+            new AcknowledgeFinishConfigurationPacket(), ct);
+
+        return await ReadChunkDataUntilCenterAsync(reader, registry, ct);
+    }
+
+    /// <summary>Completes login + Configuration and consumes the Play join burst, ending at the
+    /// point where the client may send gameplay packets (teleport already confirmed).</summary>
+    private static async Task JoinToPlayAsync(
+        NetworkStream stream, FrameReader reader, PacketRegistry registry, CancellationToken ct)
+    {
+        // Handshake (Login) -> Login Start -> Login Success.
+        await SendFrameAsync(stream, HandshakeCodec.Instance,
+            new HandshakePacket(777, "localhost", 25565, HandshakeIntent.Login), ct);
+        await SendFrameAsync(stream, LoginStartCodec.Instance,
+            new LoginStartPacket("Player1", 1, 2), ct);
+        await reader.ReadFrameAsync(ct); // Login Success
+        await SendFrameAsync(stream, LoginAcknowledgedCodec.Instance, new LoginAcknowledgedPacket(), ct);
+        await reader.ReadFrameAsync(ct); // Known Packs (clientbound)
+        await SendFrameAsync(stream, ServerKnownPacksCodec.Instance, new KnownPacksPacket([]), ct);
+
+        var provider = new ServerConfigurationDataProvider();
+        for (int i = 0; i < provider.RegistryData.Count; i++)
+        {
+            await reader.ReadFrameAsync(ct); // Registry Data
+        }
+
+        await reader.ReadFrameAsync(ct); // Update Tags
+        await reader.ReadFrameAsync(ct); // Feature Flags
+        await reader.ReadFrameAsync(ct); // Finish Configuration
+        await SendFrameAsync(stream, AcknowledgeFinishConfigurationCodec.Instance,
+            new AcknowledgeFinishConfigurationPacket(), ct);
+
+        await ConsumePlayJoinSequenceAsync(reader, registry, ct);
+        await SendFrameAsync(stream, ConfirmTeleportationCodec.Instance,
+            new ConfirmTeleportationPacket(1, 0.5, -60.0, 0.5, 0f, 0f), ct);
+    }
+
     /// <summary>Reads the server's Play join burst until the (0,0) center chunk is seen.</summary>
     private static async Task<ChunkDataPacket> ReadChunkDataUntilCenterAsync(
         FrameReader reader, PacketRegistry registry, CancellationToken ct)

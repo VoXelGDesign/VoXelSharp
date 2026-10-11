@@ -126,6 +126,63 @@ public sealed class FlatWorld : IWorldAccess
             FlatWorldGenerator.BuildLightData());
     }
 
+    /// <summary>
+    /// Returns the changed blocks of every touched column, relative to the generated seed
+    /// terrain. Pristine columns (blocks identical to what <see cref="FlatWorldGenerator"/> would
+    /// generate) are omitted, so the diff is exactly what a fresh world needs to rebuild by
+    /// <see cref="ApplyChanges"/> — the save format stays tiny and independent of the chunk
+    /// layout. Positions are world coordinates; changes are sorted by their block index.
+    /// </summary>
+    public IReadOnlyList<WorldColumnChanges> ExportChanges()
+    {
+        var result = new List<WorldColumnChanges>();
+        var totalEntries = FlatWorldGenerator.SectionCount * ChunkDataIO.SectionEntryCount;
+
+        foreach (((int chunkX, int chunkZ), ChunkColumn column) in _columns)
+        {
+            ChunkColumn seed = CreateSeededColumn(chunkX, chunkZ);
+            var changes = new List<WorldBlockChange>();
+
+            for (int index = 0; index < totalEntries; index++)
+            {
+                int current = column[index];
+                if (current != seed[index])
+                {
+                    changes.Add(new WorldBlockChange(
+                        X: chunkX * 16 + LocalXOf(index),
+                        Y: FlatWorldGenerator.MinY + LocalYOf(index),
+                        Z: chunkZ * 16 + LocalZOf(index),
+                        GlobalBlockStateId: current));
+                }
+            }
+
+            if (changes.Count > 0)
+            {
+                result.Add(new WorldColumnChanges(chunkX, chunkZ, changes.ToArray()));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Applies previously exported block changes to this world, rebuilding each touched
+    /// column from the generated seed and overriding the changed blocks. Positions outside the
+    /// world (vertical <see cref="FlatWorldGenerator.MinY"/>..<see cref="FlatWorldGenerator.MinY"/>
+    /// + <see cref="FlatWorldGenerator.WorldHeight"/>) are ignored.</summary>
+    public void ApplyChanges(IReadOnlyList<WorldColumnChanges> columns)
+    {
+        foreach (WorldColumnChanges columnChanges in columns)
+        {
+            foreach (WorldBlockChange change in columnChanges.Changes)
+            {
+                SetBlock(change.X, change.Y, change.Z, change.GlobalBlockStateId);
+            }
+        }
+    }
+
+    /// <summary>Returns the number of tracked chunk columns (touched or viewed).</summary>
+    public int TouchedColumnCount => _columns.Count;
+
     private static ChunkColumn CreateSeededColumn(int chunkX, int chunkZ)
     {
         var column = new ChunkColumn();
@@ -151,5 +208,18 @@ public sealed class FlatWorld : IWorldAccess
         // Per section: (localY * 16 + localZ) * 16 + localX, x fastest.
         int section = Math.DivRem(localY, 16, out int yInSection);
         return (section * ChunkDataIO.SectionEntryCount) + ((yInSection * 16) + localZ) * 16 + localX;
+    }
+
+    private static int LocalXOf(int index) => (index % ChunkDataIO.SectionEntryCount) % 16;
+
+    private static int LocalZOf(int index) => (index % ChunkDataIO.SectionEntryCount) / 16 % 16;
+
+    private static int LocalYOf(int index)
+    {
+        // Section offset is section * 4096; within a section the y-in-section is (rem / 256),
+        // and the section's base world Y is MinY + section * 16.
+        int section = index / ChunkDataIO.SectionEntryCount;
+        int withinSection = index % ChunkDataIO.SectionEntryCount;
+        return section * 16 + withinSection / 256;
     }
 }
